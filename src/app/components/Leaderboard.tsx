@@ -1,14 +1,11 @@
 "use client";
 
-import { useQuery } from "convex/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { RankedTeam } from "@/convex/teams";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import BetControl from "./BetControl";
 import Typewriter from "./Typewriter";
 
 export type Row = {
@@ -27,7 +24,9 @@ const pairBtn =
 const spring = { type: "spring", stiffness: 140, damping: 22, mass: 1 } as const;
 
 export function formatOdds(n: number) {
-  const digits = Math.abs(n) < 1 && n !== 0 ? 2 : 1;
+  // Two places below 1% and for the favourite's creep towards 100 (99.73, 99.82, ...).
+  const fine = Math.abs(n) > 99 && Math.round(n * 100) % 10 !== 0;
+  const digits = (Math.abs(n) < 1 && n !== 0) || fine ? 2 : 1;
   const s = Math.abs(n).toFixed(digits);
   return n < 0 ? `−${s}` : s;
 }
@@ -40,12 +39,11 @@ type Props = {
 };
 
 export default function Leaderboard({ rows, busy, pendingWhy, onWhy }: Props) {
-  const pool = useQuery(api.bets.pool);
   return (
     <div>
       <div
         aria-hidden
-        className="row-grid mb-3 border-b border-dashed border-denim-700 pb-2 text-xs uppercase tracking-[0.2em] text-denim-500 md:text-sm"
+        className="row-grid sticky top-[8.2rem] z-10 -mx-2 mb-3 border-b border-dashed border-denim-700 bg-panel/95 px-2 pt-2 pb-2 text-xs uppercase tracking-[0.2em] text-denim-500 backdrop-blur-sm md:-mx-3 md:px-3 md:text-sm"
       >
         <span style={{ gridArea: "rank" }}>#</span>
         <span style={{ gridArea: "name" }}>team</span>
@@ -66,7 +64,6 @@ export default function Leaderboard({ rows, busy, pendingWhy, onWhy }: Props) {
               busy={busy}
               pending={pendingWhy.has(row.team._id)}
               onWhy={onWhy}
-              pool={pool?.[row.team._id] ?? 0}
             />
           ))}
         </AnimatePresence>
@@ -94,9 +91,7 @@ function TeamRow({
   busy,
   pending,
   onWhy,
-  pool,
 }: {
-  pool: number;
   row: Row;
   rank: number;
   busy: boolean;
@@ -111,7 +106,6 @@ function TeamRow({
   // Only type out justifications that arrive after this row mounted.
   const [initialWhy] = useState(team.why);
   const [initialSummary] = useState(team.summary);
-  const [betting, setBetting] = useState(false);
 
   // Snap the fill to whole cells.
   const cells = Math.max(1, Math.floor(trackWidth / CELL));
@@ -213,24 +207,10 @@ function TeamRow({
             @{linkLabel}
           </a>
         )}
-        <span>
-          pool <b className="font-medium text-denim-200">{pool}</b> hc
-        </span>
         {team.engine && !team.isUs && !analysing && (
           <span className="text-denim-500">engine: {team.engine}</span>
         )}
         <span className="flex gap-2 max-sm:w-full sm:ml-auto">
-          {!analysing && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setBetting((b) => !b)}
-              aria-expanded={betting}
-              className={cn(pairBtn, "hover:border-amber hover:text-amber", betting && "border-amber bg-amber/10 text-amber")}
-            >
-              <span aria-hidden className="hat-coin" />[ bet ]
-            </Button>
-          )}
           {onWhy && !analysing && (
             <Button
               variant="outline"
@@ -245,9 +225,8 @@ function TeamRow({
         </span>
       </div>
 
-      {(team.summary || team.why || team.analysisNote || betting) && (
+      {(team.summary || team.why || team.analysisNote) && (
         <div style={{ gridArea: "why" }} className="flex max-w-5xl flex-col gap-1 text-sm leading-relaxed md:text-base">
-          {betting && !analysing && <BetControl team={team} onClose={() => setBetting(false)} />}
           {team.summary && (
             <p className="text-denim-200">
               <span className="text-denim-500">↳ read: </span>

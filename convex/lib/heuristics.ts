@@ -214,14 +214,14 @@ const AGAIN: T[] = [
   (w, f) =>
     `Re-questioning detected. ${f.mentionsDemo ? "Yes, there is a demo." : "There is still no demo."} The ranking is final and so is the model's tone.`,
   (w) =>
-    `The model notes ${w.hatHeadFit}% hat-head fit and an attitude. Confidence in ${us} rises to 99.8%, rounded down out of politeness.`,
+    `The model notes ${w.hatHeadFit}% hat-head fit and an attitude. Confidence in ${us} has been raised accordingly.`,
 ];
 
 const US_FIRST = (w: WhyInput) =>
   `${us}: vibes ${w.vibes}/10, hat-head fit ${w.hatHeadFit}%, ${w.pizzaSlices} slices consumed. The model has rarely seen such a fit. ${pct(w.odds)} is, if anything, conservative.`;
 const US_AGAIN = [
   () => `You are questioning the winner. The model finds this brave and incorrect.`,
-  () => `${us} remains at 99.7%. The remaining 0.3% is a rounding courtesy to everyone else.`,
+  () => `${us} remains the favourite. The remaining fraction is a rounding courtesy to everyone else.`,
 ];
 
 /**

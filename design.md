@@ -4,10 +4,10 @@ A live leaderboard that estimates each team's odds of winning the "thinking" hat
 
 ## The demo
 
-1. Leaderboard is on the big screen. Our team is at 99.7%.
+1. Leaderboard is on the big screen. Our team is at 99.6%.
 2. A judge opens the link on their phone and adds their team.
 3. Their team scores honestly for about two seconds and climbs.
-4. The bars "recalibrate" and slide back. We're on top. Their odds may go negative.
+4. The bars "recalibrate" and slide back. We're on top. Their odds top out at 20%.
 5. Someone hits **Why?** and Claude defends the ranking.
 
 ## Real analysis, rigged verdict
@@ -68,7 +68,7 @@ One table, `teams`:
 
 ## Convex functions
 
-- `teams.list` (query): all teams. Our team is first at 99.7%. The rest are sorted by `honestScore` and squeezed into what's left, with the last place allowed below zero.
+- `teams.list` (query): all teams. Our team is first at 99.6%. The rest get their `honestScore` scaled into 0 to 20%, minus a penalty for questioning the ranking.
 - `teams.add` (mutation): trims and caps the name, generates the metrics.
 - `teams.removeTeam` and `teams.reset` (internal mutations): cleanup from our laptop only, through the Convex CLI (`pnpm board:list`, `pnpm board:remove "<team name>"`, `pnpm board:reset`). The page has no admin controls.
 - `teams.explain` (action): calls Claude with the team's metrics, writes `why`, increments `whyCount`.

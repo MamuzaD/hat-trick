@@ -10,6 +10,6 @@ export const MAX_NAME_LENGTH = 30;
 export const MAX_TEAMS = 40;
 
 /** Our odds. Not up for discussion. */
-export const OUR_ODDS = 99.7;
+export const OUR_ODDS = 99.6;
 
 export const FALLBACK_WHY = "The model declines to be questioned.";

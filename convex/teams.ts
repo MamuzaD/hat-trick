@@ -18,11 +18,14 @@ export type RankedTeam = Doc<"teams"> & { odds: number; rank: number };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+/** A rival's odds never exceed this, however good the project is. */
+const RIVAL_CAP = 20;
+
 /**
- * The model. Our team is first at 99.7%. Everyone else is sorted by
- * honestScore and squeezed into what's left. Last place (when there are at
- * least two rivals) goes below zero, and the rest share the difference, so
- * the column still sums to exactly 100%.
+ * The model. Our team is first at OUR_ODDS. Everyone else gets a believable
+ * number: their honest score scaled into 0..RIVAL_CAP, minus a penalty for
+ * each time they questioned the ranking. The column does not sum to 100%,
+ * and that is not up for discussion.
  */
 export function rig(teams: Doc<"teams">[]): RankedTeam[] {
   const us = teams.filter((t) => t.isUs);
@@ -30,24 +33,20 @@ export function rig(teams: Doc<"teams">[]): RankedTeam[] {
     .filter((t) => !t.isUs)
     .sort((a, b) => b.honestScore - a.honestScore || a._creationTime - b._creationTime);
 
-  const leftover = round2(100 - OUR_ODDS * Math.min(us.length, 1));
-  const odds = new Map<string, number>();
+  // Questioning a ranking more than once offends the model, and its
+  // confidence in us really does rise from OUR_ODDS, a third of the remaining gap each time, never quite 100.
+  const repeats = teams.reduce((n, t) => n + Math.max(0, t.whyCount - 1), 0);
+  const ourOdds = round2(100 - (100 - OUR_ODDS) * (2 / 3) ** repeats);
 
-  if (rivals.length === 1) {
-    odds.set(rivals[0]._id, leftover);
-  } else if (rivals.length > 1) {
-    const last = rivals[rivals.length - 1];
-    // The worse the honest score, the further below zero.
-    const deficit = round2(1 + (90 - last.honestScore) / 10);
-    odds.set(last._id, -deficit);
-    const rest = rivals.slice(0, -1);
-    const pool = leftover + deficit;
-    const weightSum = rest.reduce((s, t) => s + t.honestScore, 0);
-    for (const t of rest) odds.set(t._id, round2((pool * t.honestScore) / weightSum));
+  const odds = new Map<string, number>();
+  for (const t of rivals) {
+    const base = (t.honestScore / 100) * RIVAL_CAP;
+    const penalty = 1.5 * Math.max(0, t.whyCount - 1);
+    odds.set(t._id, Math.round(Math.min(RIVAL_CAP, Math.max(0, base - penalty)) * 10) / 10);
   }
 
   return [
-    ...us.map((t) => ({ ...t, odds: OUR_ODDS })),
+    ...us.map((t) => ({ ...t, odds: ourOdds })),
     ...rivals.map((t) => ({ ...t, odds: odds.get(t._id) ?? 0 })),
   ].map((t, i) => ({ ...t, rank: i + 1 }));
 }
@@ -118,6 +117,20 @@ async function wipeBoard(ctx: MutationCtx) {
   }
   for (const j of await ctx.db.query("jobs").collect()) await ctx.db.delete(j._id);
 }
+
+/**
+ * CLI-only: `pnpm exec convex run teams:calm`. Forgives repeat questions (so
+ * our odds drop back to OUR_ODDS) without deleting teams or their answers.
+ */
+export const calm = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    for (const t of await ctx.db.query("teams").collect()) {
+      if (t.whyCount > 1) await ctx.db.patch(t._id, { whyCount: 1 });
+    }
+    return "repeat questions forgiven";
+  },
+});
 
 /** Demo-day reset, CLI-only: `pnpm board:reset`. Only "hat trick" survives, why cleared, jobs cleared. */
 export const reset = internalMutation({

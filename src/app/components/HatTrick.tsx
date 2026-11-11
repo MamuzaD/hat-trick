@@ -14,6 +14,7 @@ import ControlBar from "./ControlBar";
 import HatSpin from "./HatSpin";
 import IntroModal, { INTRO_OPEN_EVENT } from "./IntroModal";
 import Leaderboard, { formatOdds, type Row } from "./Leaderboard";
+import Market from "./Market";
 import Mascot, { type Mood } from "./Mascot";
 import Panel from "./Panel";
 import WhyDrawer, { type WhyRequest } from "./WhyDrawer";
@@ -178,7 +179,7 @@ function Ticker({ rows }: { rows: Row[] }) {
     { key: "vol", label: "volatility", value: "0.00", tone: "flat" },
     { key: "bias", label: "bias", value: "none found", tone: "flat" },
     { key: "liq", label: "liquidity", value: "1 hat", tone: "flat" },
-    { key: "conf", label: "model confidence", value: `${OUR_ODDS}%`, tone: "up" },
+    { key: "conf", label: "model confidence", value: `${formatOdds(rows.find((r) => r.team.isUs)?.team.odds ?? OUR_ODDS)}%`, tone: "up" },
   ];
   // Repeat until the tape is comfortably wider than a projector, then double it for the loop.
   const reps = Math.max(1, Math.ceil(12 / items.length));
@@ -186,7 +187,7 @@ function Ticker({ rows }: { rows: Row[] }) {
   return (
     <div
       aria-hidden
-      className="ticker rise -my-3 overflow-hidden border-y border-denim-800 bg-denim-950/60 py-2 text-xs tracking-[0.14em] uppercase [--i:1] md:-my-4 md:text-sm"
+      className="ticker overflow-hidden border-t border-denim-800 bg-denim-950/60 py-1.5 text-xs tracking-[0.14em] uppercase md:text-sm"
     >
       <div className="ticker-track">
         {[0, 1].map((copy) =>
@@ -245,6 +246,7 @@ export default function HatTrick() {
   const { track, defensiveAt } = useTracker(teams, pushLog);
   const [barHeight, setBarHeight] = useState(140);
   const [spinOpen, setSpinOpen] = useState(false);
+  const [tab, setTab] = useState<"odds" | "market" | "log">("odds");
 
   // ── why? ──
   /** Questions this client asked: answered once the live team's whyCount passes `prior`. */
@@ -364,6 +366,76 @@ export default function HatTrick() {
         className="mx-auto flex w-full max-w-[1500px] flex-col gap-8 px-4 pt-5 sm:px-6 md:gap-10 md:pt-8 lg:px-10 lg:pr-[24rem]"
         style={{ paddingBottom: barHeight + 32 }}
       >
+        {/* Sticky market bar: brand, who's here, your wallet, and the tape. Stays put while the board scrolls. */}
+        <div className="sticky top-0 z-20 -mx-4 -mt-5 border-b-2 border-denim-800 bg-ink/85 shadow-[0_12px_24px_-16px_rgb(0_0_0/0.9)] backdrop-blur-md sm:-mx-6 md:-mt-8 lg:-mx-10">
+          <div className="flex h-12 items-center gap-3 px-4 pr-[9.5rem] text-xs text-denim-500 sm:px-6 sm:pr-[9.5rem] md:text-sm lg:px-10 lg:pr-10">
+            <button
+              type="button"
+              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+              aria-label="back to top"
+              className="flex shrink-0 items-center gap-2 text-thread transition-colors hover:text-amber"
+            >
+              <Mascot mood={mood} scale={1} className="size-6" />
+              <span className="hidden font-pixel text-lg leading-none sm:inline md:text-xl">hat trick</span>
+            </button>
+            <span className="flex shrink-0 items-center gap-2 border border-amber/50 bg-amber/10 px-1.5 py-0.5 text-[0.8em] tracking-[0.2em] text-amber uppercase">
+              <span className="live-dot inline-block size-1.5 bg-amber" />
+              live
+            </span>
+            {online !== null && (
+              <span className="shrink-0 text-denim-300" title="browsers with the market open right now">
+                <b className="font-medium text-thread">{online}</b> online
+              </span>
+            )}
+            <span className="hidden min-w-0 truncate xl:inline">
+              <span className="text-amber">$</span> hat-trick --predict --live
+            </span>
+            <span className="ml-auto flex min-w-0 items-center gap-3">
+              <Wallet />
+              <button
+                type="button"
+                aria-label="what is this?"
+                title="what is this?"
+                onClick={() => window.dispatchEvent(new Event(INTRO_OPEN_EVENT))}
+                className="shrink-0 border border-denim-600 px-2 py-1 leading-none text-denim-300 transition-colors hover:border-amber hover:text-amber"
+              >
+                ?
+              </button>
+            </span>
+          </div>
+          <Ticker rows={rows} />
+          <div role="tablist" aria-label="views" className="grid grid-cols-3 border-t border-denim-800 text-sm md:text-base">
+            {(
+              [
+                ["odds", "odds", `${teams?.length ?? 0}`],
+                ["market", "market", "bet"],
+                ["log", "model log", `${log.length}`],
+              ] as const
+            ).map(([id, label, badge]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={tab === id}
+                onClick={() => setTab(id)}
+                className={cn(
+                  "relative flex h-11 items-center justify-center gap-2 border-r border-denim-800 transition-colors last:border-r-0",
+                  tab === id
+                    ? "bg-amber/10 text-amber shadow-[inset_0_-3px_0_var(--amber)]"
+                    : "text-denim-300 hover:bg-denim-900/60 hover:text-thread",
+                )}
+              >
+                <span>
+                  {tab === id ? "[ " : ""}
+                  {label}
+                  {tab === id ? " ]" : ""}
+                </span>
+                <span className={cn("text-[0.75em]", tab === id ? "text-amber/70" : "text-denim-500")}>{badge}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <header className="rise flex items-center gap-4 sm:gap-6 md:gap-8">
           <button
             type="button"
@@ -382,31 +454,7 @@ export default function HatTrick() {
             <span aria-hidden className="sparkle bottom-2 -left-2 hidden md:block" style={{ animationDelay: "1.3s" }} />
           </button>
           <div className="min-w-0 flex-1">
-            <p className="flex items-center gap-3 truncate pr-[5.5rem] text-xs text-denim-500 md:text-base lg:pr-0">
-              <span className="flex shrink-0 items-center gap-2 border border-amber/50 bg-amber/10 px-1.5 py-0.5 text-[0.7em] tracking-[0.2em] text-amber uppercase">
-                <span className="live-dot inline-block size-1.5 bg-amber" />
-                live
-              </span>
-              {online !== null && (
-                <span className="shrink-0 text-denim-300" title="browsers with the market open right now">
-                  <b className="font-medium text-thread">{online}</b> online
-                </span>
-              )}
-              <span className="hidden truncate sm:inline">
-                <span className="text-amber">$</span> hat-trick --predict --live
-              </span>
-              <Wallet />
-              <button
-                type="button"
-                aria-label="what is this?"
-                title="what is this?"
-                onClick={() => window.dispatchEvent(new Event(INTRO_OPEN_EVENT))}
-                className="shrink-0 border border-denim-600 px-1.5 py-0.5 text-[0.85em] leading-none text-denim-300 transition-colors hover:border-amber hover:text-amber"
-              >
-                ?
-              </button>
-            </p>
-            <h1 className="title-shadow mt-1 font-pixel text-6xl leading-[0.9] text-thread sm:text-7xl md:text-8xl lg:text-9xl">
+            <h1 className="title-shadow font-pixel text-6xl leading-[0.9] text-thread sm:text-7xl md:text-8xl lg:text-9xl">
               hat trick
             </h1>
             <div aria-hidden className="stitch mt-2 w-full max-w-[26rem] text-thread md:mt-3" />
@@ -417,8 +465,8 @@ export default function HatTrick() {
           <PriceHistory />
         </header>
 
-        <Ticker rows={rows} />
-
+        {tab === "odds" && (
+          <>
         <Panel
           title="leaderboard"
           glow
@@ -431,7 +479,8 @@ export default function HatTrick() {
               </span>
               <span className="ml-auto flex flex-wrap gap-x-3">
                 <span>
-                  model confidence: <b className="font-medium text-thread">{OUR_ODDS}%</b>
+                  model confidence:{" "}
+                  <b className="font-medium text-thread">{formatOdds(teams?.find((t) => t.isUs)?.odds ?? OUR_ODDS)}%</b>
                 </span>
                 <span className="text-denim-600">│</span>
                 <span>
@@ -456,7 +505,17 @@ export default function HatTrick() {
             />
           )}
         </Panel>
+          </>
+        )}
 
+        {tab === "market" && (
+          <Panel title="market" glow className="rise">
+            <Market rows={rows} />
+          </Panel>
+        )}
+
+        {tab === "log" && (
+          <>
         <Panel title="model log" className="rise [--i:3]" bodyClassName="md:pt-6">
           <ol className="flex flex-col gap-1 text-sm md:text-base" aria-live="polite">
             {log.map((l, i) => (
@@ -491,8 +550,10 @@ export default function HatTrick() {
           <div aria-hidden className="stitch mb-4 w-24 text-denim-600" />
           <span className="text-denim-300"># methodology:</span> hierarchical bayesian vibes model w/ hat-head fit
           covariates, bootstrapped over three pizza boxes (n = 1 hat). project links are read for real; the verdict is
-          not. odds sum to 100% and are not up for discussion.
+          not. odds do not sum to 100% and are not up for discussion.
         </footer>
+          </>
+        )}
       </main>
 
       <ControlBar
