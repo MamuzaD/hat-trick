@@ -1,24 +1,17 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans, Instrument_Serif } from "next/font/google";
+import { JetBrains_Mono, Pixelify_Sans } from "next/font/google";
 import { cn } from "@/lib/utils";
 import "./globals.css";
 
-const serif = Instrument_Serif({
-  variable: "--font-serif",
-  weight: "400",
-  style: ["normal", "italic"],
+/** Display only: title and the big percentages. */
+const pixel = Pixelify_Sans({
+  variable: "--font-pixel",
   subsets: ["latin"],
 });
 
-const sans = IBM_Plex_Sans({
-  variable: "--font-sans",
-  weight: ["400", "500", "600"],
-  subsets: ["latin"],
-});
-
-const mono = IBM_Plex_Mono({
+/** Everything else. */
+const mono = JetBrains_Mono({
   variable: "--font-mono",
-  weight: ["400", "500"],
   subsets: ["latin"],
 });
 
@@ -28,15 +21,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1b2533",
+  themeColor: "#0f1622",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="en"
-      className={cn("h-full antialiased", serif.variable, sans.variable, mono.variable)}
-    >
+    <html lang="en" className={cn("h-full antialiased", pixel.variable, mono.variable)}>
       <body className="min-h-full">{children}</body>
     </html>
   );

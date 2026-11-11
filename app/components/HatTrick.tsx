@@ -1,18 +1,22 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { RankedTeam } from "@/convex/teams";
 import { OUR_ODDS } from "@/convex/config";
+import { cn } from "@/lib/utils";
 import Leaderboard, { type Row } from "./Leaderboard";
 import Mascot, { type Mood } from "./Mascot";
+import Panel from "./Panel";
 
 /** A new team shows its honest score for this long before the model "recalibrates". */
 const HONEST_MS = 2000;
 /** How long the "recalibrating" status lingers after the slide. */
 const RECAL_MS = 1600;
+
+export type LogLine = { id: number; tag: "ok" | ".." | "err" | "!!"; text: string };
 
 function useNow(intervalMs: number) {
   const [now, setNow] = useState(() => Date.now());
@@ -23,28 +27,36 @@ function useNow(intervalMs: number) {
   return now;
 }
 
+function useLog() {
+  const [lines, setLines] = useState<LogLine[]>(() => [
+    { id: 1, tag: "ok", text: "model loaded · priors: strong" },
+    { id: 2, tag: "ok", text: "subscribed to live feed" },
+  ]);
+  const push = useCallback((tag: LogLine["tag"], text: string) => {
+    setLines((l) => [...l.slice(-7), { id: (l.at(-1)?.id ?? 0) + 1, tag, text }]);
+  }, []);
+  return [lines, push] as const;
+}
+
 /**
  * When did this client first see each team? Teams present on first load get 0
  * (no honest phase). Teams that appear later, on any device, get Date.now().
  */
-function useFirstSeen(teams: RankedTeam[] | undefined) {
+function useFirstSeen(teams: RankedTeam[] | undefined, onNew: (team: RankedTeam) => void) {
   const [seen, setSeen] = useState<Record<string, number> | null>(null);
   useEffect(() => {
     if (!teams) return;
+    const initial = seen === null;
+    const fresh = teams.filter((t) => !seen || !(t._id in seen));
+    if (!initial && fresh.length === 0) return;
+    const at = Date.now();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing with an external live query
-    setSeen((prev) => {
-      const initial = prev === null;
-      const next = { ...prev };
-      let changed = initial;
-      for (const t of teams) {
-        if (!(t._id in next)) {
-          next[t._id] = initial ? 0 : Date.now();
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [teams]);
+    setSeen((prev) => ({
+      ...prev,
+      ...Object.fromEntries(fresh.map((t) => [t._id, initial ? 0 : at])),
+    }));
+    if (!initial) fresh.filter((t) => !t.isUs).forEach(onNew);
+  }, [teams, seen, onNew]);
   return seen;
 }
 
@@ -62,7 +74,16 @@ export default function HatTrick() {
     [],
   );
   const now = useNow(200);
-  const firstSeen = useFirstSeen(teams);
+  const [log, pushLog] = useLog();
+
+  const onNewTeam = useCallback(
+    (t: RankedTeam) => {
+      pushLog("..", `ingesting "${t.name}" · preliminary estimate ${t.honestScore}%`);
+      setTimeout(() => pushLog("ok", `recalibrated · optimism bias corrected for "${t.name}"`), HONEST_MS);
+    },
+    [pushLog],
+  );
+  const firstSeen = useFirstSeen(teams, onNewTeam);
   const [pendingWhy] = useState<Set<Id<"teams">>>(() => new Set());
 
   const ageOf = (id: string) => {
@@ -85,67 +106,93 @@ export default function HatTrick() {
 
   const mood: Mood = ingesting ? "idle" : rows[0]?.team.isUs ? "smug" : "idle";
 
-  const status = ingesting
-    ? `Ingesting “${ingesting.team.name}”. Preliminary estimate: ${ingesting.team.honestScore}%.`
+  const state = ingesting
+    ? { busy: true, text: `ingesting "${ingesting.team.name}"…` }
     : recalibrating
-      ? "Recalibrating… correcting for optimism bias."
-      : "Model stable. No anomalies detected.";
+      ? { busy: true, text: "recalibrating…" }
+      : { busy: false, text: "model stable" };
 
   return (
-    <main className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 pt-6 pb-16 sm:px-8 md:gap-12 md:pt-10 lg:px-12">
-      <header className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-        <div className="flex items-center gap-4 md:gap-6">
-          <div className="size-20 shrink-0 sm:size-24 md:size-36">
-            <Mascot mood={mood} size={144} />
-          </div>
-          <div className="min-w-0">
-            <h1 className="embroidered font-serif text-6xl leading-[0.85] sm:text-7xl md:text-8xl lg:text-9xl">
-              hat trick
-            </h1>
-            <p className="mt-2 text-base text-denim-200 sm:text-lg md:text-2xl">
-              Live odds of winning the <span className="font-serif text-[1.15em] italic text-thread">thinking</span> hat.
-            </p>
-          </div>
+    <main className="mx-auto flex w-full max-w-[1500px] flex-col gap-8 px-4 pt-5 pb-12 sm:px-6 md:gap-10 md:pt-8 lg:px-10">
+      <header className="flex items-center gap-4 sm:gap-6">
+        <Mascot mood={mood} scale={3} className="size-[72px] shrink-0 md:hidden" />
+        <Mascot mood={mood} scale={6} className="hidden size-[144px] shrink-0 md:block" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs text-denim-500 md:text-base">
+            <span className="text-amber">$</span> hat-trick --predict --live
+          </p>
+          <h1 className="font-pixel text-5xl leading-none text-thread sm:text-6xl md:text-7xl lg:text-8xl">
+            hat trick
+          </h1>
+          <p className="mt-1 text-sm text-denim-300 md:mt-2 md:text-lg">
+            live odds of winning the <span className="text-thread">&ldquo;thinking&rdquo;</span> hat
+          </p>
         </div>
-
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-xs uppercase tracking-[0.14em] text-denim-300 sm:text-sm md:text-right">
-          <dt>model confidence</dt>
-          <dd className="tabular-nums text-thread">{OUR_ODDS}%</dd>
-          <dt>teams evaluated</dt>
-          <dd className="tabular-nums text-thread">{teams?.length ?? "—"}</dd>
-          <dt>p-value</dt>
-          <dd className="tabular-nums text-thread">&lt; 0.001</dd>
-        </dl>
       </header>
 
-      <p
-        aria-live="polite"
-        className="flex items-center gap-3 border-y border-denim-700/70 py-3 font-mono text-sm text-denim-200 md:text-lg"
+      <Panel
+        title="leaderboard"
+        glow
+        status={
+          <>
+            <span className={cn("flex items-center gap-2", state.busy ? "text-amber" : "text-denim-300")}>
+              <span className={cn("inline-block size-2", state.busy ? "pulse-soft bg-amber" : "bg-denim-400")} />
+              {state.text}
+            </span>
+            <span className="ml-auto flex flex-wrap gap-x-3">
+              <span>
+                model confidence: <b className="font-medium text-thread">{OUR_ODDS}%</b>
+              </span>
+              <span className="text-denim-600">│</span>
+              <span>
+                teams: <b className="font-medium text-thread">{teams?.length ?? "–"}</b>
+              </span>
+              <span className="text-denim-600">│</span>
+              <span>
+                bias: <b className="font-medium text-thread">none found</b>
+              </span>
+            </span>
+          </>
+        }
       >
-        <span
-          className={`inline-block size-2.5 shrink-0 rounded-full ${ingesting || recalibrating ? "shimmer bg-warn" : "bg-denim-300"}`}
-        />
-        {status}
-      </p>
-
-      <section aria-label="Leaderboard">
         {teams === undefined ? (
-          <p className="shimmer font-mono text-denim-300">Loading priors…</p>
+          <p className="pulse-soft py-8 text-denim-400">[..] loading priors</p>
         ) : (
           <Leaderboard
             rows={rows}
             admin={admin}
-            shimmer={false}
+            busy={false}
             pendingWhy={pendingWhy}
             onRemove={(id) => remove({ id })}
           />
         )}
-      </section>
+      </Panel>
 
-      <footer className="mt-4 border-t border-denim-700/70 pt-5 font-mono text-xs leading-relaxed text-denim-400 md:text-sm">
-        <span className="text-denim-300">Methodology:</span> hierarchical Bayesian vibes model with
-        hat-head fit covariates, bootstrapped over three pizza boxes (n&nbsp;=&nbsp;1 hat). Odds sum to
-        100% and are not up for discussion.
+      <Panel title="model log" bodyClassName="md:pt-6">
+        <ol className="flex flex-col gap-1 text-sm md:text-base" aria-live="polite">
+          {log.map((l) => (
+            <li key={l.id} className="flex gap-3">
+              <span
+                className={cn(
+                  "shrink-0",
+                  l.tag === "ok" && "text-denim-400",
+                  l.tag === ".." && "text-amber",
+                  l.tag === "err" && "text-red",
+                  l.tag === "!!" && "text-red",
+                )}
+              >
+                [{l.tag}]
+              </span>
+              <span className="min-w-0 text-denim-200">{l.text}</span>
+            </li>
+          ))}
+        </ol>
+      </Panel>
+
+      <footer className="text-xs leading-relaxed text-denim-500 md:text-sm">
+        <span className="text-denim-300"># methodology:</span> hierarchical bayesian vibes model w/ hat-head
+        fit covariates, bootstrapped over three pizza boxes (n = 1 hat). odds sum to 100% and are not up for
+        discussion.
       </footer>
     </main>
   );

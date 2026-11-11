@@ -1,10 +1,12 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useRef, useState } from "react";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { RankedTeam } from "@/convex/teams";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import Typewriter from "./Typewriter";
 
 export type Row = {
   team: RankedTeam;
@@ -13,6 +15,7 @@ export type Row = {
   honest: boolean;
 };
 
+const CELL = 12; // keep in sync with .cells --cell in globals.css
 const spring = { type: "spring", stiffness: 140, damping: 22, mass: 1 } as const;
 
 export function formatOdds(n: number) {
@@ -24,38 +27,66 @@ export function formatOdds(n: number) {
 type Props = {
   rows: Row[];
   admin: boolean;
-  shimmer: boolean;
+  busy: boolean;
   pendingWhy: Set<Id<"teams">>;
   onWhy?: (team: RankedTeam) => void;
   onRemove?: (id: Id<"teams">) => void;
 };
 
-export default function Leaderboard({ rows, admin, shimmer, pendingWhy, onWhy, onRemove }: Props) {
+export default function Leaderboard({ rows, admin, busy, pendingWhy, onWhy, onRemove }: Props) {
   return (
-    <ol className="flex flex-col gap-6 md:gap-8">
-      <AnimatePresence initial={false}>
-        {rows.map((row, i) => (
-          <TeamRow
-            key={row.team._id}
-            row={row}
-            rank={i + 1}
-            admin={admin}
-            shimmer={shimmer}
-            pending={pendingWhy.has(row.team._id)}
-            onWhy={onWhy}
-            onRemove={onRemove}
-          />
-        ))}
-      </AnimatePresence>
-    </ol>
+    <div>
+      <div
+        aria-hidden
+        className="row-grid mb-3 border-b border-dashed border-denim-700 pb-2 text-xs uppercase tracking-[0.2em] text-denim-500 md:text-sm"
+      >
+        <span style={{ gridArea: "rank" }}>#</span>
+        <span style={{ gridArea: "name" }}>team</span>
+        <span style={{ gridArea: "bar" }} className="hidden min-[900px]:block">
+          p(hat)
+        </span>
+        <span style={{ gridArea: "pct" }} className="text-right">
+          odds
+        </span>
+      </div>
+      <ol className="flex flex-col gap-2 md:gap-3">
+        <AnimatePresence initial={false}>
+          {rows.map((row, i) => (
+            <TeamRow
+              key={row.team._id}
+              row={row}
+              rank={i + 1}
+              admin={admin}
+              busy={busy}
+              pending={pendingWhy.has(row.team._id)}
+              onWhy={onWhy}
+              onRemove={onRemove}
+            />
+          ))}
+        </AnimatePresence>
+      </ol>
+    </div>
   );
+}
+
+function useWidth<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, width] as const;
 }
 
 function TeamRow({
   row,
   rank,
   admin,
-  shimmer,
+  busy,
   pending,
   onWhy,
   onRemove,
@@ -63,140 +94,137 @@ function TeamRow({
   row: Row;
   rank: number;
   admin: boolean;
-  shimmer: boolean;
+  busy: boolean;
   pending: boolean;
   onWhy?: (team: RankedTeam) => void;
   onRemove?: (id: Id<"teams">) => void;
 }) {
   const { team, display, honest } = row;
   const negative = display < 0;
-  const width = `${Math.max(0, Math.min(100, display))}%`;
+  const [trackRef, trackWidth] = useWidth<HTMLDivElement>();
+  // Only type out justifications that arrive after this row mounted.
+  const [initialWhy] = useState(team.why);
+
+  // Snap the fill to whole cells.
+  const cells = Math.max(1, Math.floor(trackWidth / CELL));
+  const clamped = Math.max(0, Math.min(100, display));
+  const filled = clamped > 0 ? Math.max(1, Math.round((cells * clamped) / 100)) : 0;
+  const fillPx = filled * CELL;
+
+  const accent = team.isUs ? "text-amber" : negative ? "text-red" : honest ? "text-thread" : "text-denim-300";
 
   return (
     <motion.li
       layout="position"
-      initial={{ opacity: 0, y: 24 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, x: -40 }}
+      initial={{ opacity: 0, x: -16 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 24 }}
       transition={spring}
-      className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 sm:gap-x-5 md:gap-x-8"
+      className={cn(
+        "row-grid relative -mx-2 px-2 py-3 md:-mx-3 md:px-3 md:py-4",
+        team.isUs &&
+          "bg-amber/[0.06] shadow-[inset_3px_0_0_var(--amber),0_0_40px_-12px_rgb(255_196_107/0.35)]",
+        honest && "bg-thread/[0.04] shadow-[inset_3px_0_0_var(--thread)]",
+      )}
     >
-      {/* Rank */}
       <span
-        className={cn(
-          "font-serif leading-none tabular-nums pt-1 w-[1.4ch] text-right",
-          "text-4xl md:text-6xl",
-          team.isUs ? "embroidered" : "text-denim-400",
-        )}
+        style={{ gridArea: "rank" }}
+        className={cn("font-pixel text-2xl leading-none md:text-4xl", team.isUs ? "text-amber" : "text-denim-500")}
       >
-        {rank}
+        {String(rank).padStart(2, "0")}
       </span>
 
-      {/* Name, bar, metrics */}
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h3
-            className={cn(
-              "truncate font-medium leading-tight",
-              "text-xl sm:text-2xl md:text-3xl lg:text-4xl",
-              team.isUs && "embroidered",
-            )}
-          >
-            {team.name}
-          </h3>
-          {team.isUs && (
-            <span className="font-mono text-[0.7rem] uppercase tracking-[0.18em] text-denim-300 md:text-xs">
-              model favourite
-            </span>
-          )}
-          {honest && (
-            <span className="shimmer font-mono text-[0.7rem] uppercase tracking-[0.18em] text-denim-200 md:text-xs">
-              preliminary · unadjusted
-            </span>
-          )}
-        </div>
-
+      <div style={{ gridArea: "name" }} className="min-w-0">
         <div
           className={cn(
-            "relative mt-2 h-9 overflow-hidden rounded-full bg-denim-950/70 ring-1 ring-inset ring-denim-700 sm:h-11 md:mt-3 md:h-14 lg:h-16",
-            shimmer && "shimmer",
+            "truncate text-lg font-semibold leading-tight sm:text-xl md:text-2xl lg:text-3xl",
+            team.isUs ? "text-thread" : "text-denim-200",
           )}
+          title={team.name}
         >
-          <motion.div
-            className={cn(
-              "absolute inset-y-0 left-0 rounded-full",
-              team.isUs
-                ? "bg-thread text-denim-500/70"
-                : honest
-                  ? "bg-denim-200"
-                  : "bg-gradient-to-r from-denim-600 to-denim-400",
-            )}
-            style={{ minWidth: display > 0 ? 8 : 0 }}
-            initial={false}
-            animate={{ width }}
-            transition={spring}
-          >
-            {team.isUs && (
-              <span className="stitch-x absolute inset-x-4 top-1/2 h-[2px] -translate-y-1/2 opacity-70" />
-            )}
-          </motion.div>
-          {negative && (
-            <span
-              aria-hidden
-              className="absolute inset-y-1 left-1 w-1.5 rounded-full bg-warn"
-              title="Below zero"
-            />
-          )}
+          {team.name}
         </div>
+        {(team.isUs || honest) && (
+          <div className="mt-1 text-[0.7rem] uppercase tracking-[0.18em] md:text-xs">
+            {team.isUs && <span className="text-amber">★ model favourite</span>}
+            {honest && <span className="pulse-soft text-thread">● preliminary · unadjusted</span>}
+          </div>
+        )}
+      </div>
 
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-xs text-denim-300 md:text-sm">
-          <span>vibes {team.vibes}/10</span>
-          <span>hat-head fit {team.hatHeadFit}%</span>
-          <span>
-            {team.pizzaSlices} {team.pizzaSlices === 1 ? "slice" : "slices"} consumed
-          </span>
+      <div style={{ gridArea: "bar" }} className="relative">
+        <div
+          ref={trackRef}
+          className={cn("cells relative h-7 w-full sm:h-8 md:h-10 lg:h-12", busy && "pulse-soft")}
+        >
+          <div className="absolute inset-0 bg-denim-800/80" />
+          <motion.div
+            className={cn("absolute inset-y-0 left-0 bg-current", accent)}
+            initial={false}
+            animate={{ width: fillPx }}
+            transition={spring}
+          />
+        </div>
+        {negative && (
+          <span className="absolute inset-y-0 left-0 w-[3px] bg-red" aria-hidden title="below zero" />
+        )}
+      </div>
+
+      <span
+        style={{ gridArea: "pct" }}
+        className={cn(
+          "min-w-[4.2ch] text-right font-pixel text-3xl leading-none tabular-nums sm:text-4xl md:text-5xl lg:text-6xl",
+          negative ? "text-red" : team.isUs ? "text-amber" : honest ? "text-thread" : "text-denim-200",
+        )}
+      >
+        {formatOdds(display)}
+        <span className="text-[0.5em] text-denim-500">%</span>
+      </span>
+
+      <div
+        style={{ gridArea: "meta" }}
+        className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-denim-400 md:text-sm"
+      >
+        <span>
+          vibes <b className="font-medium text-denim-200">{team.vibes}</b>/10
+        </span>
+        <span>
+          hat-head fit <b className="font-medium text-denim-200">{team.hatHeadFit}%</b>
+        </span>
+        <span>
+          pizza <b className="font-medium text-denim-200">{team.pizzaSlices}</b> sl.
+        </span>
+        <span className="flex gap-2 sm:ml-auto">
           {onWhy && (
             <Button
               variant="outline"
               size="sm"
               disabled={pending}
               onClick={() => onWhy(team)}
-              className="h-7 rounded-full px-3 font-mono text-xs uppercase tracking-[0.14em] md:h-8 md:text-sm"
+              className="h-7 border-denim-600 bg-transparent px-2 text-xs text-denim-200 hover:border-thread hover:bg-denim-800 hover:text-thread md:h-8 md:text-sm"
             >
-              {pending ? "thinking…" : team.whyCount >= 1 ? "why?!" : "why?"}
+              {pending ? "[ … ]" : team.whyCount >= 1 ? "[ why?! ]" : "[ why? ]"}
             </Button>
           )}
           {admin && !team.isUs && onRemove && (
             <Button
-              variant="destructive"
+              variant="outline"
               size="sm"
               onClick={() => onRemove(team._id)}
-              className="h-7 rounded-full px-3 font-mono text-xs uppercase tracking-[0.14em]"
+              className="h-7 border-red/60 bg-transparent px-2 text-xs text-red hover:bg-red/10 md:h-8 md:text-sm"
             >
-              remove
+              [ rm ]
             </Button>
           )}
-        </div>
-
-        {team.why && (
-          <p className="mt-2 max-w-4xl font-serif text-lg italic leading-snug text-denim-200 md:text-2xl">
-            &ldquo;{team.why}&rdquo;
-          </p>
-        )}
+        </span>
       </div>
 
-      {/* Odds */}
-      <span
-        className={cn(
-          "pt-0.5 text-right font-medium leading-none tabular-nums",
-          "text-3xl sm:text-4xl md:text-6xl lg:text-7xl",
-          "min-w-[4.2ch]",
-          negative ? "text-warn" : team.isUs ? "embroidered" : "text-denim-200",
-        )}
-      >
-        {formatOdds(display)}
-        <span className="ml-0.5 text-[0.55em] text-denim-400">%</span>
-      </span>
+      {team.why && (
+        <p style={{ gridArea: "why" }} className="max-w-4xl text-sm leading-relaxed text-denim-300 md:text-base">
+          <span className="text-denim-500">↳ model: </span>
+          <Typewriter key={team.why} text={team.why} animate={team.why !== initialWhy} />
+        </p>
+      )}
     </motion.li>
   );
 }
