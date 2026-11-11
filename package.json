@@ -10,7 +10,8 @@
     "worker": "tsx worker/index.ts",
     "board:list": "node scripts/board.mjs list",
     "board:remove": "node scripts/board.mjs remove",
-    "board:reset": "node scripts/board.mjs reset"
+    "board:reset": "node scripts/board.mjs reset",
+    "chat:clear": "node scripts/chat.mjs clear"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",

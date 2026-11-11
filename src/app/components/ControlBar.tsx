@@ -146,7 +146,7 @@ export default function ControlBar({
     <div
       ref={ref}
       className={cn(
-        "fixed left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-[68rem] -translate-x-1/2 transition-[opacity,transform] duration-300",
+        "fixed left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-[68rem] -translate-x-1/2 lg:left-[calc(50%-11rem)] lg:w-[calc(100%-25rem)] transition-[opacity,transform] duration-300",
         "bottom-[calc(0.75rem+env(safe-area-inset-bottom))]",
         hidden && "pointer-events-none translate-y-4 opacity-0",
       )}

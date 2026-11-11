@@ -7,6 +7,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import type { RankedTeam } from "@/convex/teams";
 import { FALLBACK_WHY, OUR_ODDS } from "@/convex/config";
 import { cn } from "@/lib/utils";
+import ChatSidebar from "./ChatSidebar";
 import ControlBar from "./ControlBar";
 import IntroModal from "./IntroModal";
 import Leaderboard, { formatOdds, type Row } from "./Leaderboard";
@@ -337,7 +338,7 @@ export default function HatTrick() {
   return (
     <>
       <main
-        className="mx-auto flex w-full max-w-[1500px] flex-col gap-8 px-4 pt-5 sm:px-6 md:gap-10 md:pt-8 lg:px-10"
+        className="mx-auto flex w-full max-w-[1500px] flex-col gap-8 px-4 pt-5 sm:px-6 md:gap-10 md:pt-8 lg:px-10 lg:pr-[24rem]"
         style={{ paddingBottom: barHeight + 32 }}
       >
         <header className="rise flex items-center gap-4 sm:gap-6 md:gap-8">
@@ -460,6 +461,8 @@ export default function HatTrick() {
       />
 
       <WhyDrawer request={whyReq} onOpenChange={(open) => !open && setDrawerTeam(null)} />
+
+      <ChatSidebar />
 
       <IntroModal />
     </>

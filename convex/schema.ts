@@ -78,4 +78,12 @@ export default defineSchema({
     at: v.number(),
     note: v.optional(v.string()),
   }).index("by_key", ["key"]),
+
+  /** The trading floor. Handles are derived from traderId on the server. */
+  messages: defineTable({
+    traderId: v.string(),
+    handle: v.string(),
+    text: v.string(),
+    kind: v.optional(v.union(v.literal("user"), v.literal("hat"))),
+  }).index("by_trader", ["traderId"]),
 });
