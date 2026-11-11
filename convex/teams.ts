@@ -141,11 +141,11 @@ export const seed = mutation({
         honestScore: 52,
         vibes: 11,
         hatHeadFit: 100,
-        pizzaSlices: 23,
+        pizzaSlices: 0,
         whyCount: 0,
       });
-    } else if (us.name !== OUR_TEAM_NAME || us.url !== OUR_TEAM_URL) {
-      await ctx.db.patch(us._id, { name: OUR_TEAM_NAME, url: OUR_TEAM_URL });
+    } else if (us.name !== OUR_TEAM_NAME || us.url !== OUR_TEAM_URL || us.pizzaSlices !== 0) {
+      await ctx.db.patch(us._id, { name: OUR_TEAM_NAME, url: OUR_TEAM_URL, pizzaSlices: 0 });
     }
   },
 });

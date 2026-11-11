@@ -120,7 +120,7 @@ function TeamRow({
       className={cn(
         "row-grid relative -mx-2 px-2 py-3 md:-mx-3 md:px-3 md:py-4",
         team.isUs &&
-          "bg-amber/[0.06] shadow-[inset_3px_0_0_var(--amber),0_0_40px_-12px_rgb(255_196_107/0.35)]",
+          "bg-[linear-gradient(90deg,rgb(255_196_107/0.12),rgb(255_196_107/0.03)_55%,transparent)] shadow-[inset_3px_0_0_var(--amber),0_0_48px_-14px_rgb(255_196_107/0.4)]",
         honest && "bg-thread/[0.04] shadow-[inset_3px_0_0_var(--thread)]",
       )}
     >
@@ -157,7 +157,7 @@ function TeamRow({
         >
           <div className="absolute inset-0 bg-denim-800/80" />
           <motion.div
-            className={cn("absolute inset-y-0 left-0 bg-current", accent)}
+            className={cn("absolute inset-y-0 left-0 bg-current", accent, team.isUs ? "fill-amber" : "fill-plain")}
             initial={false}
             animate={{ width: fillPx }}
             transition={spring}
@@ -172,7 +172,7 @@ function TeamRow({
         style={{ gridArea: "pct" }}
         className={cn(
           "min-w-[4.2ch] text-right font-pixel text-3xl leading-none tabular-nums sm:text-4xl md:text-5xl lg:text-6xl",
-          negative ? "text-red" : team.isUs ? "text-amber" : honest ? "text-thread" : "text-denim-200",
+          negative ? "text-red" : team.isUs ? "glow-amber text-amber" : honest ? "text-thread" : "text-denim-200",
         )}
       >
         {analysing ? "··.·" : formatOdds(display)}

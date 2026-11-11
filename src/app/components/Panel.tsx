@@ -20,8 +20,10 @@ export default function Panel({
     <section
       aria-label={title}
       className={cn(
-        "relative border-2 border-denim-600 bg-panel/95",
-        glow && "shadow-[0_0_0_1px_rgb(255_196_107/0.08),0_20px_60px_-20px_rgb(0_0_0/0.6)]",
+        "relative border-2 border-denim-600 bg-panel/90 backdrop-blur-[2px]",
+        "shadow-[inset_0_1px_0_rgb(169_188_208/0.08),0_24px_60px_-28px_rgb(0_0_0/0.75)]",
+        glow &&
+          "corners border-denim-500 shadow-[inset_0_1px_0_rgb(169_188_208/0.1),0_0_0_1px_rgb(255_196_107/0.1),0_0_80px_-30px_rgb(255_196_107/0.35),0_24px_60px_-24px_rgb(0_0_0/0.75)]",
         className,
       )}
     >

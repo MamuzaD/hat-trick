@@ -138,10 +138,180 @@
   body {
     @apply text-foreground;
     background-color: var(--ink);
-    /* The one texture: a faint pixel grid. */
-    background-image: radial-gradient(rgb(169 188 208 / 0.07) 1px, transparent 1px);
-    background-size: 16px 16px;
+    /* Denim under a lamp: pixel grid, a faint twill weave, an amber spill
+       from the top-left (where the hat sits) and a cold one bottom-right. */
+    background-image:
+      radial-gradient(rgb(169 188 208 / 0.07) 1px, transparent 1px),
+      repeating-linear-gradient(135deg, rgb(169 188 208 / 0.022) 0 2px, transparent 2px 7px),
+      radial-gradient(60rem 34rem at 12% -6%, rgb(255 196 107 / 0.1), transparent 62%),
+      radial-gradient(70rem 40rem at 105% 108%, rgb(100 128 159 / 0.2), transparent 60%);
+    background-size:
+      16px 16px,
+      auto,
+      auto,
+      auto;
+    background-attachment: fixed;
   }
+  ::selection {
+    background: var(--amber);
+    color: var(--ink);
+  }
+}
+
+/* ── Embroidery: a dashed run of thread, like the stitching on the cap ── */
+.stitch {
+  height: 3px;
+  background-image: repeating-linear-gradient(90deg, currentColor 0 10px, transparent 10px 16px);
+  opacity: 0.9;
+}
+
+/* ── Pixel-shadowed display type ── */
+.title-shadow {
+  text-shadow:
+    0.045em 0.045em 0 var(--denim-700),
+    0.09em 0.09em 0 rgb(15 22 34 / 0.9),
+    0 0 2.2em rgb(255 196 107 / 0.16);
+}
+.glow-amber {
+  text-shadow:
+    0 0 0.5em rgb(255 196 107 / 0.45),
+    0 0 1.6em rgb(255 196 107 / 0.22);
+}
+
+/* ── Panel corner ticks ── */
+.corners::before,
+.corners::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+  border: 2px solid var(--amber);
+  opacity: 0.85;
+}
+.corners::before {
+  top: -2px;
+  right: -2px;
+  border-left: 0;
+  border-bottom: 0;
+}
+.corners::after {
+  bottom: -2px;
+  left: -2px;
+  border-right: 0;
+  border-top: 0;
+}
+
+/* ── The favourite's bar: woven amber with a slow sheen ── */
+.fill-amber {
+  background-image:
+    linear-gradient(100deg, transparent 0 42%, rgb(255 255 255 / 0.55) 50%, transparent 58% 100%),
+    linear-gradient(180deg, #ffd995 0 34%, var(--amber) 34% 78%, #e09f45 78% 100%);
+  background-size:
+    300% 100%,
+    100% 100%;
+  background-repeat: no-repeat;
+  animation: sheen 3.6s linear infinite;
+}
+.fill-plain {
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.22) 0 34%, transparent 34% 78%, rgb(0 0 0 / 0.22) 78% 100%);
+}
+@keyframes sheen {
+  0% {
+    background-position:
+      130% 0,
+      0 0;
+  }
+  60%,
+  100% {
+    background-position:
+      -60% 0,
+      0 0;
+  }
+}
+
+/* ── Ticker tape ── */
+.ticker {
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+}
+.ticker-track {
+  display: flex;
+  width: max-content;
+  animation: ticker 38s linear infinite;
+}
+.ticker:hover .ticker-track {
+  animation-play-state: paused;
+}
+@keyframes ticker {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* ── Mascot idles on the pixel grid: two frames, no tweening ── */
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(calc(var(--px, 3px) * -1));
+  }
+}
+.bob {
+  animation: bob 1.4s steps(1) infinite;
+}
+
+/* ── Twinkling pixel sparkles ── */
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  40%,
+  60% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.sparkle {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  background: var(--amber);
+  box-shadow:
+    3px 0 0 var(--amber),
+    -3px 0 0 var(--amber),
+    0 3px 0 var(--amber),
+    0 -3px 0 var(--amber);
+  animation: twinkle 2.8s steps(4) infinite;
+  pointer-events: none;
+}
+
+/* ── Page load: sections rise in order ── */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+.rise {
+  animation: rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 110ms);
+}
+
+/* ── Live dot ── */
+@keyframes ping {
+  0% {
+    box-shadow: 0 0 0 0 rgb(255 196 107 / 0.6);
+  }
+  100% {
+    box-shadow: 0 0 0 10px rgb(255 196 107 / 0);
+  }
+}
+.live-dot {
+  animation: ping 1.6s ease-out infinite;
 }
 
 /* ── Leaderboard row layout: table on wide screens, stacked on phones ── */
@@ -209,7 +379,16 @@
 
 @media (prefers-reduced-motion: reduce) {
   .cursor-blink,
-  .pulse-soft {
+  .pulse-soft,
+  .fill-amber,
+  .ticker-track,
+  .bob,
+  .rise,
+  .live-dot {
     animation: none;
+  }
+  .sparkle {
+    animation: none;
+    opacity: 1;
   }
 }

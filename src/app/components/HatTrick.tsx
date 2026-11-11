@@ -8,7 +8,8 @@ import type { RankedTeam } from "@/convex/teams";
 import { FALLBACK_WHY, OUR_ODDS } from "@/convex/config";
 import { cn } from "@/lib/utils";
 import ControlBar from "./ControlBar";
-import Leaderboard, { type Row } from "./Leaderboard";
+import IntroModal from "./IntroModal";
+import Leaderboard, { formatOdds, type Row } from "./Leaderboard";
 import Mascot, { type Mood } from "./Mascot";
 import Panel from "./Panel";
 import WhyDrawer, { type WhyRequest } from "./WhyDrawer";
@@ -125,6 +126,85 @@ function useTracker(teams: RankedTeam[] | undefined, log: (tag: LogTag, text: st
   /* eslint-enable react-hooks/set-state-in-effect */
 
   return { track, defensiveAt };
+}
+
+/**
+ * The favourite's price history: a perfectly flat line. Decorative and
+ * accurate.
+ */
+function PriceHistory() {
+  return (
+    <div className="hidden w-[19rem] shrink-0 border-l-2 border-dashed border-denim-700 pl-6 lg:block">
+      <p className="flex items-baseline justify-between text-xs tracking-[0.2em] text-denim-500 uppercase">
+        <span>hat trick · 24h</span>
+        <span className="text-amber">▲ 0.00</span>
+      </p>
+      <svg viewBox="0 0 304 72" className="mt-2 w-full" shapeRendering="crispEdges" aria-hidden>
+        {[18, 36, 54].map((y) => (
+          <path key={y} d={`M0 ${y}H304`} stroke="var(--denim-800)" strokeWidth="1" strokeDasharray="2 6" />
+        ))}
+        <path d="M0 18H296V72H0Z" fill="rgb(255 196 107 / 0.07)" />
+        <path d="M0 18H296" stroke="var(--amber)" strokeWidth="3" />
+        <rect x="292" y="14" width="8" height="8" fill="var(--amber)" className="pulse-soft" />
+      </svg>
+      <p className="mt-2 flex justify-between text-xs text-denim-400">
+        <span>
+          volatility <b className="font-medium text-thread">0.00</b>
+        </span>
+        <span>
+          volume <b className="font-medium text-thread">1 hat</b>
+        </span>
+      </p>
+    </div>
+  );
+}
+
+/** Market tape. Everyone's price, scrolling, with the direction it was always going to move. */
+function Ticker({ rows }: { rows: Row[] }) {
+  const priced = rows.filter((r) => !r.analysing);
+  if (priced.length === 0) return null;
+  const items: { key: string; label: string; value: string; tone: "up" | "down" | "flat" }[] = [
+    ...priced.map((r) => ({
+      key: r.team._id,
+      label: r.team.name,
+      value: `${formatOdds(r.team.odds)}%`,
+      tone: r.team.isUs ? ("up" as const) : ("down" as const),
+    })),
+    { key: "vol", label: "volatility", value: "0.00", tone: "flat" },
+    { key: "bias", label: "bias", value: "none found", tone: "flat" },
+    { key: "liq", label: "liquidity", value: "1 hat", tone: "flat" },
+    { key: "conf", label: "model confidence", value: `${OUR_ODDS}%`, tone: "up" },
+  ];
+  // Repeat until the tape is comfortably wider than a projector, then double it for the loop.
+  const reps = Math.max(1, Math.ceil(12 / items.length));
+  const half = Array.from({ length: reps }, () => items).flat();
+  return (
+    <div
+      aria-hidden
+      className="ticker rise -my-3 overflow-hidden border-y border-denim-800 bg-denim-950/60 py-2 text-xs tracking-[0.14em] uppercase [--i:1] md:-my-4 md:text-sm"
+    >
+      <div className="ticker-track">
+        {[0, 1].map((copy) =>
+          half.map((it, i) => (
+            <span key={`${copy}-${i}`} className="flex shrink-0 items-center gap-2 px-5">
+              <span className="max-w-[24ch] truncate text-denim-400">{it.label}</span>
+              <span
+                className={cn(
+                  it.tone === "up" && "text-amber",
+                  it.tone === "down" && "text-red",
+                  it.tone === "flat" && "text-denim-200",
+                )}
+              >
+                {it.tone === "up" ? "▲ " : it.tone === "down" ? "▼ " : ""}
+                {it.value}
+              </span>
+              <span className="pl-5 text-denim-700">◆</span>
+            </span>
+          )),
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function HatTrick() {
@@ -260,25 +340,44 @@ export default function HatTrick() {
         className="mx-auto flex w-full max-w-[1500px] flex-col gap-8 px-4 pt-5 sm:px-6 md:gap-10 md:pt-8 lg:px-10"
         style={{ paddingBottom: barHeight + 32 }}
       >
-        <header className="flex items-center gap-4 sm:gap-6">
-          <Mascot mood={mood} scale={3} className="size-[72px] shrink-0 md:hidden" />
-          <Mascot mood={mood} scale={6} className="hidden size-[144px] shrink-0 md:block" />
+        <header className="rise flex items-center gap-4 sm:gap-6 md:gap-8">
+          <div className="relative shrink-0">
+            <div className="bob md:hidden" style={{ "--px": "3px" } as React.CSSProperties}>
+              <Mascot mood={mood} scale={3} className="size-[72px]" />
+            </div>
+            <div className="bob hidden md:block" style={{ "--px": "6px" } as React.CSSProperties}>
+              <Mascot mood={mood} scale={6} className="size-[144px]" />
+            </div>
+            <span aria-hidden className="sparkle -top-1 right-0" />
+            <span aria-hidden className="sparkle bottom-2 -left-2 hidden md:block" style={{ animationDelay: "1.3s" }} />
+          </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs text-denim-500 md:text-base">
-              <span className="text-amber">$</span> hat-trick --predict --live
+            <p className="flex items-center gap-3 truncate text-xs text-denim-500 md:text-base">
+              <span className="flex shrink-0 items-center gap-2 border border-amber/50 bg-amber/10 px-1.5 py-0.5 text-[0.7em] tracking-[0.2em] text-amber uppercase">
+                <span className="live-dot inline-block size-1.5 bg-amber" />
+                live
+              </span>
+              <span className="truncate">
+                <span className="text-amber">$</span> hat-trick --predict --live
+              </span>
             </p>
-            <h1 className="font-pixel text-5xl leading-none text-thread sm:text-6xl md:text-7xl lg:text-8xl">
+            <h1 className="title-shadow mt-1 font-pixel text-6xl leading-[0.9] text-thread sm:text-7xl md:text-8xl lg:text-9xl">
               hat trick
             </h1>
-            <p className="mt-1 text-sm text-denim-300 md:mt-2 md:text-lg">
-              live odds of winning the <span className="text-thread">&ldquo;thinking&rdquo;</span> hat
+            <div aria-hidden className="stitch mt-2 w-full max-w-[26rem] text-thread md:mt-3" />
+            <p className="mt-2 text-sm text-denim-300 md:mt-3 md:text-lg">
+              the prediction market for the <span className="text-thread">&ldquo;thinking&rdquo;</span> hat
             </p>
           </div>
+          <PriceHistory />
         </header>
+
+        <Ticker rows={rows} />
 
         <Panel
           title="leaderboard"
           glow
+          className="rise [--i:2]"
           status={
             <>
               <span className={cn("flex items-center gap-2", state.busy ? "text-amber" : "text-denim-300")}>
@@ -313,10 +412,15 @@ export default function HatTrick() {
           )}
         </Panel>
 
-        <Panel title="model log" bodyClassName="md:pt-6">
+        <Panel title="model log" className="rise [--i:3]" bodyClassName="md:pt-6">
           <ol className="flex flex-col gap-1 text-sm md:text-base" aria-live="polite">
-            {log.map((l) => (
-              <li key={l.id} className="flex gap-3">
+            {log.map((l, i) => (
+              <li
+                key={l.id}
+                className="flex gap-3 transition-opacity duration-500"
+                // Older lines recede, like scrollback.
+                style={{ opacity: Math.max(0.35, 1 - (log.length - 1 - i) * 0.09) }}
+              >
                 <span
                   className={cn(
                     "shrink-0",
@@ -331,10 +435,15 @@ export default function HatTrick() {
                 <span className="min-w-0 text-denim-200">{l.text}</span>
               </li>
             ))}
+            <li aria-hidden className="flex gap-3 text-denim-500">
+              <span className="text-amber">$</span>
+              <span className="cursor-blink inline-block h-[1.1em] w-[0.6em] translate-y-[0.15em] bg-denim-400" />
+            </li>
           </ol>
         </Panel>
 
-        <footer className="text-xs leading-relaxed text-denim-500 md:text-sm">
+        <footer className="rise text-xs leading-relaxed text-denim-500 [--i:4] md:text-sm">
+          <div aria-hidden className="stitch mb-4 w-24 text-denim-600" />
           <span className="text-denim-300"># methodology:</span> hierarchical bayesian vibes model w/ hat-head fit
           covariates, bootstrapped over three pizza boxes (n = 1 hat). project links are read for real; the verdict is
           not. odds sum to 100% and are not up for discussion.
@@ -351,6 +460,8 @@ export default function HatTrick() {
       />
 
       <WhyDrawer request={whyReq} onOpenChange={(open) => !open && setDrawerTeam(null)} />
+
+      <IntroModal />
     </>
   );
 }
