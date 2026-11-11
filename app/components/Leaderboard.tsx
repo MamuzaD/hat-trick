@@ -137,7 +137,7 @@ function TeamRow({
       <div style={{ gridArea: "name" }} className="min-w-0">
         <div
           className={cn(
-            "truncate text-lg font-semibold leading-tight sm:text-xl md:text-2xl lg:text-3xl",
+            "line-clamp-2 break-words text-lg font-semibold leading-tight sm:text-xl md:text-2xl lg:text-3xl",
             team.isUs ? "text-thread" : "text-denim-200",
           )}
           title={team.name}

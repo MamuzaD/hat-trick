@@ -156,7 +156,7 @@
 }
 @media (min-width: 900px) {
   .row-grid {
-    grid-template-columns: 3ch minmax(12ch, 26ch) minmax(0, 1fr) auto;
+    grid-template-columns: 3ch minmax(14ch, 40ch) minmax(0, 1fr) auto;
     grid-template-areas:
       "rank name bar pct"
       ".    meta meta meta"

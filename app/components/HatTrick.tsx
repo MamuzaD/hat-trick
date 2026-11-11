@@ -1,20 +1,35 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { RankedTeam } from "@/convex/teams";
-import { OUR_ODDS } from "@/convex/config";
+import { FALLBACK_WHY, OUR_ODDS } from "@/convex/config";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import AddTeam from "./AddTeam";
 import Leaderboard, { type Row } from "./Leaderboard";
 import Mascot, { type Mood } from "./Mascot";
 import Panel from "./Panel";
+import Spinner from "./Spinner";
+import WhyDrawer, { type WhyRequest } from "./WhyDrawer";
 
 /** A new team shows its honest score for this long before the model "recalibrates". */
 const HONEST_MS = 2000;
 /** How long the "recalibrating" status lingers after the slide. */
 const RECAL_MS = 1600;
+/** Recalculate spins for this long and changes nothing. */
+const RECALC_MS = 3000;
+/** The mascot stays defensive this long after a repeat "why?". */
+const DEFENSIVE_MS = 7000;
+
+/** Deterministic wobble in [0, 100) per team per tick, for the recalculate theatre. */
+function wobble(id: string, tick: number) {
+  let h = tick * 2654435761;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  return ((h >>> 0) % 1000) / 10;
+}
 
 export type LogLine = { id: number; tag: "ok" | ".." | "err" | "!!"; text: string };
 
@@ -64,6 +79,7 @@ export default function HatTrick() {
   const teams = useQuery(api.teams.list);
   const seed = useMutation(api.teams.seed);
   const remove = useMutation(api.teams.remove);
+  const explain = useAction(api.claude.explain);
 
   useEffect(() => {
     seed().catch(() => {});
@@ -84,7 +100,47 @@ export default function HatTrick() {
     [pushLog],
   );
   const firstSeen = useFirstSeen(teams, onNewTeam);
-  const [pendingWhy] = useState<Set<Id<"teams">>>(() => new Set());
+  const [pendingWhy, setPendingWhy] = useState<Set<Id<"teams">>>(() => new Set());
+  const [whyReq, setWhyReq] = useState<WhyRequest | null>(null);
+  const [defensiveUntil, setDefensiveUntil] = useState(0);
+  const [recalcUntil, setRecalcUntil] = useState(0);
+  const recalculatingNow = now < recalcUntil;
+
+  async function askWhy(team: RankedTeam) {
+    if (pendingWhy.has(team._id)) return;
+    const priorCount = team.whyCount;
+    setPendingWhy((s) => new Set(s).add(team._id));
+    setWhyReq({ team, priorCount, answer: null });
+    pushLog("..", `explaining "${team.name}"${priorCount >= 1 ? " (again)" : ""}`);
+    let answer = FALLBACK_WHY;
+    try {
+      answer = await explain({ id: team._id });
+    } catch {
+      // The action already falls back on Claude errors; this covers network failures.
+    }
+    setWhyReq((r) => (r && r.team._id === team._id ? { ...r, answer } : r));
+    if (priorCount >= 1) {
+      setDefensiveUntil(Date.now() + DEFENSIVE_MS);
+      pushLog("!!", `"${team.name}" questioned ${priorCount + 1}x · model is offended`);
+    } else {
+      pushLog("ok", `justification written for "${team.name}"`);
+    }
+    setPendingWhy((s) => {
+      const next = new Set(s);
+      next.delete(team._id);
+      return next;
+    });
+  }
+
+  function recalculate() {
+    if (recalculatingNow) return;
+    const n = teams?.length ?? 0;
+    setRecalcUntil(Date.now() + RECALC_MS);
+    pushLog("..", "recalculating · bootstrapping 10,000 priors");
+    setTimeout(() => pushLog("..", "re-weighting vibes · controlling for hat-head"), RECALC_MS / 3);
+    setTimeout(() => pushLog("..", "cross-validating against pizza consumption"), (2 * RECALC_MS) / 3);
+    setTimeout(() => pushLog("ok", `recalibrated ${n} teams · no change (p < 0.001)`), RECALC_MS);
+  }
 
   const ageOf = (id: string) => {
     const t = firstSeen?.[id];
@@ -96,7 +152,9 @@ export default function HatTrick() {
       const honest = !team.isUs && ageOf(team._id) < HONEST_MS;
       return { team, honest, display: honest ? team.honestScore : team.odds };
     })
-    .sort((a, b) => Number(b.team.isUs) - Number(a.team.isUs) || b.display - a.display);
+    .sort((a, b) => Number(b.team.isUs) - Number(a.team.isUs) || b.display - a.display)
+    // While recalculating, the bars wobble in place, then settle exactly where they were.
+    .map((r) => (recalculatingNow ? { ...r, display: wobble(r.team._id, Math.floor(now / 250)) } : r));
 
   const ingesting = rows.find((r) => r.honest);
   const recalibrating = rows.some((r) => {
@@ -104,17 +162,36 @@ export default function HatTrick() {
     return !r.team.isUs && age >= HONEST_MS && age < HONEST_MS + RECAL_MS;
   });
 
-  const mood: Mood = ingesting ? "idle" : rows[0]?.team.isUs ? "smug" : "idle";
+  const mood: Mood =
+    pendingWhy.size > 0 || recalculatingNow
+      ? "thinking"
+      : now < defensiveUntil
+        ? "defensive"
+        : ingesting
+          ? "idle"
+          : rows[0]?.team.isUs
+            ? "smug"
+            : "idle";
 
-  const state = ingesting
+  // `now` ticks on a timer, so it can land just past `recalcUntil` (or before
+  // the start) for a frame; clamp so the cell counts below stay within 0..12.
+  const progress = recalculatingNow
+    ? Math.min(1, Math.max(0, 1 - (recalcUntil - now) / RECALC_MS))
+    : 0;
+  const state = recalculatingNow
+    ? {
+        busy: true,
+        text: `recalculating ${"█".repeat(Math.round(progress * 12))}${"░".repeat(12 - Math.round(progress * 12))}`,
+      }
+    : ingesting
     ? { busy: true, text: `ingesting "${ingesting.team.name}"…` }
     : recalibrating
       ? { busy: true, text: "recalibrating…" }
       : { busy: false, text: "model stable" };
 
   return (
-    <main className="mx-auto flex w-full max-w-[1500px] flex-col gap-8 px-4 pt-5 pb-12 sm:px-6 md:gap-10 md:pt-8 lg:px-10">
-      <header className="flex items-center gap-4 sm:gap-6">
+    <main className="mx-auto grid w-full max-w-[1500px] grid-cols-1 gap-8 md:grid-cols-12 md:gap-x-6 px-4 pt-5 pb-12 sm:px-6 md:gap-10 md:pt-8 lg:px-10">
+      <header className="order-1 flex items-center gap-4 sm:gap-6 md:col-span-12">
         <Mascot mood={mood} scale={3} className="size-[72px] shrink-0 md:hidden" />
         <Mascot mood={mood} scale={6} className="hidden size-[144px] shrink-0 md:block" />
         <div className="min-w-0 flex-1">
@@ -128,10 +205,29 @@ export default function HatTrick() {
             live odds of winning the <span className="text-thread">&ldquo;thinking&rdquo;</span> hat
           </p>
         </div>
+        <Button
+          variant="outline"
+          onClick={recalculate}
+          disabled={recalculatingNow}
+          className="hidden h-12 shrink-0 border-2 border-denim-500 bg-transparent px-5 text-lg text-thread hover:border-amber hover:bg-amber/10 hover:text-amber disabled:opacity-100 sm:inline-flex"
+        >
+          {recalculatingNow ? (
+            <>
+              [ <Spinner /> recalculating ]
+            </>
+          ) : (
+            "[ recalculate ]"
+          )}
+        </Button>
       </header>
+
+      <Panel title="add team" className="order-2 md:order-3 md:col-span-5">
+        <AddTeam onLog={pushLog} />
+      </Panel>
 
       <Panel
         title="leaderboard"
+        className="order-3 md:order-2 md:col-span-12"
         glow
         status={
           <>
@@ -161,14 +257,15 @@ export default function HatTrick() {
           <Leaderboard
             rows={rows}
             admin={admin}
-            busy={false}
+            busy={recalculatingNow}
             pendingWhy={pendingWhy}
+            onWhy={askWhy}
             onRemove={(id) => remove({ id })}
           />
         )}
       </Panel>
 
-      <Panel title="model log" bodyClassName="md:pt-6">
+      <Panel title="model log" className="order-4 md:col-span-7" bodyClassName="md:pt-6">
         <ol className="flex flex-col gap-1 text-sm md:text-base" aria-live="polite">
           {log.map((l) => (
             <li key={l.id} className="flex gap-3">
@@ -189,7 +286,24 @@ export default function HatTrick() {
         </ol>
       </Panel>
 
-      <footer className="text-xs leading-relaxed text-denim-500 md:text-sm">
+      <Button
+        variant="outline"
+        onClick={recalculate}
+        disabled={recalculatingNow}
+        className="order-3 -mt-4 h-11 border-2 border-denim-500 bg-transparent text-base text-thread disabled:opacity-100 sm:hidden"
+      >
+        {recalculatingNow ? (
+          <>
+            [ <Spinner /> recalculating ]
+          </>
+        ) : (
+          "[ recalculate ]"
+        )}
+      </Button>
+
+      <WhyDrawer request={whyReq} onOpenChange={(open) => !open && setWhyReq(null)} />
+
+      <footer className="order-5 text-xs md:col-span-12 leading-relaxed text-denim-500 md:text-sm">
         <span className="text-denim-300"># methodology:</span> hierarchical bayesian vibes model w/ hat-head
         fit covariates, bootstrapped over three pizza boxes (n = 1 hat). odds sum to 100% and are not up for
         discussion.
