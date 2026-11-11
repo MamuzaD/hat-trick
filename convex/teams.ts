@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 import {
   internalMutation,
   internalQuery,
@@ -8,6 +9,9 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { MAX_NAME_LENGTH, MAX_TEAMS, OUR_ODDS, OUR_TEAM_NAME } from "./config";
+import { engine, facts } from "./schema";
+import { randomMetrics } from "./lib/heuristics";
+import { checkUrl } from "./lib/url";
 
 export type RankedTeam = Doc<"teams"> & { odds: number; rank: number };
 
@@ -57,10 +61,14 @@ export const list = query({
 });
 
 export const add = mutation({
-  args: { name: v.string() },
-  handler: async (ctx, { name }) => {
+  args: { name: v.string(), url: v.optional(v.string()) },
+  handler: async (ctx, { name, url }) => {
+    // Trim and cap, but keep the casing people typed.
     const clean = name.replace(/\s+/g, " ").trim().slice(0, MAX_NAME_LENGTH).trim();
     if (!clean) throw new ConvexError("The model requires a team name.");
+
+    const link = checkUrl(url ?? "");
+    if ("error" in link) throw new ConvexError(link.error);
 
     const teams = await ctx.db.query("teams").collect();
     if (teams.length >= MAX_TEAMS) {
@@ -70,16 +78,18 @@ export const add = mutation({
       throw new ConvexError("That team is already being evaluated.");
     }
 
-    const rand = (min: number, max: number) => min + Math.random() * (max - min);
-    return await ctx.db.insert("teams", {
+    const id = await ctx.db.insert("teams", {
       name: clean,
       isUs: false,
-      honestScore: Math.round(rand(40, 90)),
-      vibes: Math.round(rand(2, 9.5) * 10) / 10,
-      hatHeadFit: Math.round(rand(12, 88)),
-      pizzaSlices: Math.floor(rand(0, 9)),
+      ...randomMetrics(),
       whyCount: 0,
+      url: link.url ?? undefined,
+      analysisStatus: link.url ? "pending" : "none",
+      engine: link.url ? undefined : "random",
     });
+    // One analysis per team, scheduled once, here. There is no re-fetch.
+    if (link.url) await ctx.scheduler.runAfter(0, internal.analyse.run, { id });
+    return id;
   },
 });
 
@@ -124,11 +134,20 @@ export const getRanked = internalQuery({
   },
 });
 
-export const saveWhy = internalMutation({
-  args: { id: v.id("teams"), why: v.string() },
-  handler: async (ctx, { id, why }) => {
-    const team = await ctx.db.get(id);
-    if (!team) return;
-    await ctx.db.patch(id, { why, whyCount: team.whyCount + 1 });
+export const get = internalQuery({
+  args: { id: v.id("teams") },
+  handler: async (ctx, { id }) => await ctx.db.get(id),
+});
+
+export const patchAnalysis = internalMutation({
+  args: {
+    id: v.id("teams"),
+    analysisStatus: v.optional(v.union(v.literal("pending"), v.literal("done"), v.literal("failed"))),
+    engine: v.optional(engine),
+    analysisNote: v.optional(v.string()),
+    facts: v.optional(facts),
+  },
+  handler: async (ctx, { id, ...patch }) => {
+    if (await ctx.db.get(id)) await ctx.db.patch(id, patch);
   },
 });

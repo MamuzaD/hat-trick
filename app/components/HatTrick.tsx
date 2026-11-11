@@ -23,6 +23,8 @@ const RECAL_MS = 1600;
 const RECALC_MS = 3000;
 /** The mascot stays defensive this long after a repeat "why?". */
 const DEFENSIVE_MS = 7000;
+/** Give up waiting for a "why?" answer after this long and show the fallback line. */
+const WHY_TIMEOUT_MS = 20_000;
 
 /** Deterministic wobble in [0, 100) per team per tick, for the recalculate theatre. */
 function wobble(id: string, tick: number) {
@@ -100,37 +102,48 @@ export default function HatTrick() {
     [pushLog],
   );
   const firstSeen = useFirstSeen(teams, onNewTeam);
-  const [pendingWhy, setPendingWhy] = useState<Set<Id<"teams">>>(() => new Set());
-  const [whyReq, setWhyReq] = useState<WhyRequest | null>(null);
-  const [defensiveUntil, setDefensiveUntil] = useState(0);
+  /** Questions this client asked: answered once the live team's whyCount passes `prior`. */
+  const [asks, setAsks] = useState<Record<string, { prior: number; at: number }>>({});
+  const [drawerTeam, setDrawerTeam] = useState<Id<"teams"> | null>(null);
+  const [defensiveUntil] = useState(0);
   const [recalcUntil, setRecalcUntil] = useState(0);
   const recalculatingNow = now < recalcUntil;
 
-  async function askWhy(team: RankedTeam) {
+  const answered = (id: string) => {
+    const a = asks[id];
+    const live = teams?.find((t) => t._id === id);
+    return !a || (live ? live.whyCount > a.prior : true);
+  };
+  const timedOut = (id: string) => !!asks[id] && now - asks[id].at > WHY_TIMEOUT_MS;
+  const pendingWhy = new Set(
+    Object.keys(asks).filter((id) => !answered(id) && !timedOut(id)) as Id<"teams">[],
+  );
+
+  function askWhy(team: RankedTeam) {
     if (pendingWhy.has(team._id)) return;
     const priorCount = team.whyCount;
-    setPendingWhy((s) => new Set(s).add(team._id));
-    setWhyReq({ team, priorCount, answer: null });
+    setAsks((a) => ({ ...a, [team._id]: { prior: priorCount, at: Date.now() } }));
+    setDrawerTeam(team._id);
     pushLog("..", `explaining "${team.name}"${priorCount >= 1 ? " (again)" : ""}`);
-    let answer = FALLBACK_WHY;
-    try {
-      answer = await explain({ id: team._id });
-    } catch {
-      // The action already falls back on Claude errors; this covers network failures.
-    }
-    setWhyReq((r) => (r && r.team._id === team._id ? { ...r, answer } : r));
-    if (priorCount >= 1) {
-      setDefensiveUntil(Date.now() + DEFENSIVE_MS);
-      pushLog("!!", `"${team.name}" questioned ${priorCount + 1}x · model is offended`);
-    } else {
-      pushLog("ok", `justification written for "${team.name}"`);
-    }
-    setPendingWhy((s) => {
-      const next = new Set(s);
-      next.delete(team._id);
-      return next;
+    explain({ id: team._id }).catch(() => {
+      // The server falls back on its own; the drawer times out to the fallback line.
     });
   }
+
+  // The drawer reads the answer from the live team, whichever engine wrote it.
+  const drawerLive = teams?.find((t) => t._id === drawerTeam);
+  const whyReq: WhyRequest | null =
+    drawerTeam && drawerLive && asks[drawerTeam]
+      ? {
+          team: drawerLive,
+          priorCount: asks[drawerTeam].prior,
+          answer: answered(drawerTeam)
+            ? (drawerLive.why ?? FALLBACK_WHY)
+            : timedOut(drawerTeam)
+              ? FALLBACK_WHY
+              : null,
+        }
+      : null;
 
   function recalculate() {
     if (recalculatingNow) return;
@@ -165,7 +178,7 @@ export default function HatTrick() {
   const mood: Mood =
     pendingWhy.size > 0 || recalculatingNow
       ? "thinking"
-      : now < defensiveUntil
+      : now < defensiveUntil || (whyReq?.answer && whyReq.priorCount >= 1)
         ? "defensive"
         : ingesting
           ? "idle"
@@ -301,7 +314,7 @@ export default function HatTrick() {
         )}
       </Button>
 
-      <WhyDrawer request={whyReq} onOpenChange={(open) => !open && setWhyReq(null)} />
+      <WhyDrawer request={whyReq} onOpenChange={(open) => !open && setDrawerTeam(null)} />
 
       <footer className="order-5 text-xs md:col-span-12 leading-relaxed text-denim-500 md:text-sm">
         <span className="text-denim-300"># methodology:</span> hierarchical bayesian vibes model w/ hat-head

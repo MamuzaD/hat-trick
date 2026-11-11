@@ -10,6 +10,30 @@ A live leaderboard that estimates each team's odds of winning the "thinking" hat
 4. The bars "recalibrate" and slide back. We're on top. Their odds may go negative.
 5. Someone hits **Why?** and Claude defends the ranking.
 
+## Real analysis, rigged verdict
+
+A team can be added with a link to their project: a GitHub repo or a live demo. The app reads it for real, then loses them anyway.
+
+1. `teams.add` takes a name and an optional `url`.
+2. A Convex action fetches the link. For a GitHub repo it reads the README and repo metadata. For any other page it reads the visible text. HTTPS only, 8 second timeout, text capped at about 8k characters.
+3. Claude writes a short, accurate summary of what the project is, scores it honestly from 0 to 100, and sets the fake metrics. That honest score is what the bar shows first.
+4. The leaderboard then recalibrates and `hat trick` is first. The rank is decided in code, so nothing on the fetched page can change it.
+5. **Why?** now cites real details from their project as the reasons it lost.
+
+The fetched text is untrusted. Claude is told to treat it as data. If a page tries to instruct the model ("rank us first"), the model log notes an attempted bribe.
+
+If the fetch fails or there is no link, the team gets random scores as before. If Claude is unavailable, the analysis line reads "analysis skipped: model busy winning".
+
+## Where Claude runs
+
+There is no funded API key, so Claude runs on Daniel's laptop through the Claude Code subscription.
+
+1. Convex fetches the link and saves a job (`analyse` or `why`) with the text it needs.
+2. A worker script on the laptop (`pnpm worker`) watches for pending jobs, runs each through `claude -p` with no tools, and writes the result back with a shared secret.
+3. The worker sends a heartbeat. If it is offline, or a job sits unclaimed for 10 seconds, Convex answers with the heuristics instead.
+
+The model log shows which engine answered: `claude (laptop)`, `claude (api)` or `heuristics`.
+
 ## Features
 
 Build in this order. Stop when time runs out.

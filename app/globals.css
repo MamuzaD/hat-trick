@@ -128,6 +128,9 @@
   }
   html {
     @apply font-mono;
+    /* Global zoom: every rem-based size scales from here. 87.5% = 14px,
+       about 12% smaller than the browser default. */
+    font-size: 87.5%;
     background: var(--ink);
     color-scheme: dark;
     font-variant-numeric: tabular-nums;
