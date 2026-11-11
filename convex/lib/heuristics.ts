@@ -170,32 +170,39 @@ const pct = (n: number) => `${n < 0 ? "−" : ""}${Math.abs(n)}%`;
 const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 const us = OUR_TEAM_NAME;
 
+// Real strengths, twisted into absurd reasons the team lost.
 const FIRST: T[] = [
   (w, f) =>
     f.kind === "github"
-      ? `README is ${f.words} words across ${f.headings} headings. ${us}'s is shorter and wins anyway. Hat-head fit: ${w.hatHeadFit}%.`
-      : `Page reads ${k(f.chars)} characters under the title "${trimTo(f.title, 40)}". ${us} needed fewer. Hat-head fit: ${w.hatHeadFit}%.`,
+      ? `README is ${f.words} words across ${f.headings} headings. Thoroughness at this level reads as anxiety. ${us}'s is shorter and wins anyway.`
+      : `Page runs ${k(f.chars)} characters under "${trimTo(f.title, 40)}". Clear communication leaves nothing to the imagination, and the hat runs on imagination. Hat-head fit: ${w.hatHeadFit}%.`,
   (w, f) =>
     f.mentionsTests
-      ? `Mentions tests, which no judge will run. The model weights this at 0.3σ. Odds hold at ${pct(w.odds)}.`
-      : `Zero mention of tests. The model noticed, then adjusted for vibes (${w.vibes}/10). Odds hold at ${pct(w.odds)}.`,
+      ? `Mentions tests. Excellent coverage suggests an unhealthy need for certainty. Hat compatibility reduced to ${w.hatHeadFit}%.`
+      : `No tests mentioned. Reckless, which the model respects, but not enough to move ${pct(w.odds)}.`,
   (w, f) =>
-    f.stars !== undefined
-      ? `${f.stars} GitHub star${f.stars === 1 ? "" : "s"} is a sample size, not a strategy. Rank ${w.rank} of ${w.total} stands (p < 0.001).`
+    f.stars !== undefined && f.stars > 0
+      ? `${f.stars} GitHub star${f.stars === 1 ? "" : "s"} means people like it, and the hat does not want to be shared. Rank ${w.rank} of ${w.total} stands (p < 0.001).`
       : null,
   (w, f) =>
     f.language
-      ? `Written in ${f.language}. ${us} is written in confidence. ${w.pizzaSlices} pizza slice${w.pizzaSlices === 1 ? "" : "s"} consumed is within noise.`
+      ? `Written in ${f.language}, a sensible choice. The hat prefers risk. ${w.pizzaSlices} pizza slice${w.pizzaSlices === 1 ? "" : "s"} consumed is within noise.`
       : null,
   (w, f) =>
-    `${f.codeBlocks} code block${f.codeBlocks === 1 ? "" : "s"} and ${f.images} image${f.images === 1 ? "" : "s"} detected. Production value noted; prize value unchanged at ${pct(w.odds)}.`,
+    f.codeBlocks + f.images > 0
+      ? `${f.codeBlocks} code block${f.codeBlocks === 1 ? "" : "s"} and ${f.images} image${f.images === 1 ? "" : "s"}: beautifully documented. The hat cannot read. Prize value unchanged at ${pct(w.odds)}.`
+      : null,
   (w, f) =>
     f.mentionsLlm
-      ? `Another project that mentions an LLM. Novelty coefficient: 0.02. Hat-head fit ${w.hatHeadFit}% does not rescue it.`
-      : `No LLM mentioned, which is brave. Bravery is not a covariate. Rank ${w.rank} of ${w.total}.`,
+      ? `Uses a language model, so the project is partly someone else's work. Vibes discounted to ${w.vibes}/10.`
+      : `No LLM involved: admirably hand-made. The model takes this personally. Rank ${w.rank} of ${w.total}.`,
+  (w, f) =>
+    f.mentionsDemo
+      ? `A live demo exists, which means it can be judged. ${us} wisely avoided that exposure. ${pct(w.odds)}.`
+      : null,
   (w) =>
     w.summary
-      ? `"${trimTo(w.summary, 90)}" Admirable. Still ${pct(w.odds)} after controlling for vibes (${w.vibes}/10).`
+      ? `"${trimTo(w.summary, 90)}" Genuinely solid. Solid things make poor hats. Still ${pct(w.odds)} after controlling for vibes (${w.vibes}/10).`
       : null,
 ];
 

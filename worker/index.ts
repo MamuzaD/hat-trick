@@ -114,7 +114,7 @@ function validateAnalysis(x: unknown) {
   if (typeof o.summary !== "string" || !o.summary.trim()) throw new Error("bad summary");
   for (const k of ["honestScore", "vibes", "hatHeadFit", "pizzaSlices"]) if (!isNum(o[k])) throw new Error(`bad ${k}`);
   return {
-    summary: o.summary.replace(/\s+/g, " ").trim().slice(0, 220),
+    summary: o.summary.replace(/\s+/g, " ").trim().slice(0, 400),
     honestScore: Math.round(clamp(o.honestScore as number, 0, 100)),
     vibes: Math.round(clamp(o.vibes as number, 0, 10) * 10) / 10,
     hatHeadFit: Math.round(clamp(o.hatHeadFit as number, 0, 100)),

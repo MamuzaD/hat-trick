@@ -93,12 +93,34 @@ export const add = mutation({
   },
 });
 
+function requireAdmin(secret: string) {
+  const expected = process.env.ADMIN_SECRET;
+  if (!expected || expected.length < 16) throw new ConvexError("admin not configured");
+  let diff = secret.length ^ expected.length;
+  for (let i = 0; i < expected.length; i++) diff |= (secret.charCodeAt(i) || 0) ^ expected.charCodeAt(i);
+  if (diff !== 0) throw new ConvexError("unauthorised");
+}
+
+/** For cleaning up abuse from our laptop: `?admin=<ADMIN_SECRET>` in the page URL. */
 export const remove = mutation({
-  args: { id: v.id("teams") },
-  handler: async (ctx, { id }) => {
+  args: { id: v.id("teams"), secret: v.string() },
+  handler: async (ctx, { id, secret }) => {
+    requireAdmin(secret);
     const team = await ctx.db.get(id);
     if (!team || team.isUs) return;
     await ctx.db.delete(id);
+  },
+});
+
+/** CLI cleanup: `npx convex run teams:reset` removes every rival and freshens our row. */
+export const reset = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    for (const t of await ctx.db.query("teams").collect()) {
+      if (t.isUs) await ctx.db.patch(t._id, { why: undefined, whyCount: 0, whyEngine: undefined });
+      else await ctx.db.delete(t._id);
+    }
+    for (const j of await ctx.db.query("jobs").collect()) await ctx.db.delete(j._id);
   },
 });
 

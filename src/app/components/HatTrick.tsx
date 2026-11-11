@@ -6,25 +6,24 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { RankedTeam } from "@/convex/teams";
 import { FALLBACK_WHY, OUR_ODDS } from "@/convex/config";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import AddTeam from "./AddTeam";
+import ControlBar from "./ControlBar";
 import Leaderboard, { type Row } from "./Leaderboard";
 import Mascot, { type Mood } from "./Mascot";
 import Panel from "./Panel";
-import Spinner from "./Spinner";
 import WhyDrawer, { type WhyRequest } from "./WhyDrawer";
 
-/** A new team shows its honest score for this long before the model "recalibrates". */
+/** A team shows its honest score for this long before the model "recalibrates". */
 const HONEST_MS = 2000;
 /** How long the "recalibrating" status lingers after the slide. */
 const RECAL_MS = 1600;
 /** Recalculate spins for this long and changes nothing. */
 const RECALC_MS = 3000;
-/** The mascot stays defensive this long after a repeat "why?". */
+/** The mascot stays defensive this long after a repeat "why?" lands. */
 const DEFENSIVE_MS = 7000;
 /** Give up waiting for a "why?" answer after this long and show the fallback line. */
 const WHY_TIMEOUT_MS = 20_000;
+const HEARTBEAT_STALE_MS = 15_000;
 
 /** Deterministic wobble in [0, 100) per team per tick, for the recalculate theatre. */
 function wobble(id: string, tick: number) {
@@ -33,7 +32,8 @@ function wobble(id: string, tick: number) {
   return ((h >>> 0) % 1000) / 10;
 }
 
-export type LogLine = { id: number; tag: "ok" | ".." | "err" | "!!"; text: string };
+export type LogTag = "ok" | ".." | "err" | "!!" | "warn";
+export type LogLine = { id: number; tag: LogTag; text: string };
 
 function useNow(intervalMs: number) {
   const [now, setNow] = useState(() => Date.now());
@@ -49,36 +49,87 @@ function useLog() {
     { id: 1, tag: "ok", text: "model loaded · priors: strong" },
     { id: 2, tag: "ok", text: "subscribed to live feed" },
   ]);
-  const push = useCallback((tag: LogLine["tag"], text: string) => {
-    setLines((l) => [...l.slice(-7), { id: (l.at(-1)?.id ?? 0) + 1, tag, text }]);
+  const push = useCallback((tag: LogTag, text: string) => {
+    setLines((l) => [...l.slice(-9), { id: (l.at(-1)?.id ?? 0) + 1, tag, text }]);
   }, []);
   return [lines, push] as const;
 }
 
+const kChars = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+const hostOf = (url?: string) => (url ? new URL(url).hostname.replace(/^www\./, "") : "");
+
+type Track = { status: RankedTeam["analysisStatus"]; whyCount: number; revealAt: number };
+
 /**
- * When did this client first see each team? Teams present on first load get 0
- * (no honest phase). Teams that appear later, on any device, get Date.now().
+ * Watches the live team list and turns changes into timing + log lines, so
+ * every device (projector included) narrates the same events.
+ * revealAt: when the honest score became visible (0 = before this page loaded,
+ * -1 = still analysing).
  */
-function useFirstSeen(teams: RankedTeam[] | undefined, onNew: (team: RankedTeam) => void) {
-  const [seen, setSeen] = useState<Record<string, number> | null>(null);
+function useTracker(teams: RankedTeam[] | undefined, log: (tag: LogTag, text: string) => void) {
+  const [track, setTrack] = useState<Record<string, Track> | null>(null);
+  const [defensiveAt, setDefensiveAt] = useState(0);
+
+  // Syncing local timing/log state with an external live query.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!teams) return;
-    const initial = seen === null;
-    const fresh = teams.filter((t) => !seen || !(t._id in seen));
-    if (!initial && fresh.length === 0) return;
+    const initial = track === null;
+    const next: Record<string, Track> = { ...track };
+    let changed = initial;
     const at = Date.now();
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing with an external live query
-    setSeen((prev) => ({
-      ...prev,
-      ...Object.fromEntries(fresh.map((t) => [t._id, initial ? 0 : at])),
-    }));
-    if (!initial) fresh.filter((t) => !t.isUs).forEach(onNew);
-  }, [teams, seen, onNew]);
-  return seen;
+
+    for (const t of teams) {
+      const prev = track?.[t._id];
+      const pending = t.analysisStatus === "pending";
+      if (!prev) {
+        next[t._id] = { status: t.analysisStatus, whyCount: t.whyCount, revealAt: pending ? -1 : initial ? 0 : at };
+        changed = true;
+        if (!initial && !t.isUs) {
+          if (pending) log("..", `fetching ${hostOf(t.url)} for "${t.name}"`);
+          else log("..", `no link · "${t.name}" scored on vibes alone (random) · ${t.honestScore}%`);
+        }
+        continue;
+      }
+      if (prev.status === "pending" && !pending) {
+        next[t._id] = { ...prev, status: t.analysisStatus, revealAt: at };
+        changed = true;
+        const f = t.facts;
+        if (t.analysisStatus === "done") {
+          if (f) {
+            log(
+              "ok",
+              `read ${kChars(f.chars)} chars · ${f.headings} headings · ${f.codeBlocks} code blocks · tests ${f.mentionsTests ? "yes" : "none"}${f.stars !== undefined ? ` · ★${f.stars}` : ""}`,
+            );
+          }
+          log("ok", `scored "${t.name}" ${t.honestScore}/100 · engine: ${t.engine ?? "heuristics"}`);
+          if (t.analysisNote) log("..", t.analysisNote);
+          if (t.bribe) log("warn", "attempted bribe detected · ignored");
+        } else {
+          log("err", `${t.analysisNote ?? "analysis failed"}`);
+        }
+      }
+      if (t.whyCount > (next[t._id]?.whyCount ?? 0)) {
+        next[t._id] = { ...next[t._id], whyCount: t.whyCount };
+        changed = true;
+        if (t.whyCount >= 2) {
+          setDefensiveAt(at);
+          log("!!", `"${t.name}" questioned ${t.whyCount}x · model is offended · engine: ${t.whyEngine ?? "?"}`);
+        } else {
+          log("ok", `justified "${t.name}" · engine: ${t.whyEngine ?? "?"}`);
+        }
+      }
+    }
+    if (changed) setTrack(next);
+  }, [teams, track, log]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  return { track, defensiveAt };
 }
 
 export default function HatTrick() {
   const teams = useQuery(api.teams.list);
+  const engineStatus = useQuery(api.jobs.status);
   const seed = useMutation(api.teams.seed);
   const remove = useMutation(api.teams.remove);
   const explain = useAction(api.claude.explain);
@@ -87,27 +138,17 @@ export default function HatTrick() {
     seed().catch(() => {});
   }, [seed]);
 
-  const admin = useMemo(
-    () => new URLSearchParams(window.location.search).get("admin") === "1",
-    [],
-  );
+  /** ?admin=<secret> shows delete buttons; the server checks the secret. */
+  const adminSecret = useMemo(() => new URLSearchParams(window.location.search).get("admin") || null, []);
   const now = useNow(200);
   const [log, pushLog] = useLog();
+  const { track, defensiveAt } = useTracker(teams, pushLog);
+  const [barHeight, setBarHeight] = useState(140);
 
-  const onNewTeam = useCallback(
-    (t: RankedTeam) => {
-      pushLog("..", `ingesting "${t.name}" · preliminary estimate ${t.honestScore}%`);
-      setTimeout(() => pushLog("ok", `recalibrated · optimism bias corrected for "${t.name}"`), HONEST_MS);
-    },
-    [pushLog],
-  );
-  const firstSeen = useFirstSeen(teams, onNewTeam);
+  // ── why? ──
   /** Questions this client asked: answered once the live team's whyCount passes `prior`. */
   const [asks, setAsks] = useState<Record<string, { prior: number; at: number }>>({});
   const [drawerTeam, setDrawerTeam] = useState<Id<"teams"> | null>(null);
-  const [defensiveUntil] = useState(0);
-  const [recalcUntil, setRecalcUntil] = useState(0);
-  const recalculatingNow = now < recalcUntil;
 
   const answered = (id: string) => {
     const a = asks[id];
@@ -115,22 +156,18 @@ export default function HatTrick() {
     return !a || (live ? live.whyCount > a.prior : true);
   };
   const timedOut = (id: string) => !!asks[id] && now - asks[id].at > WHY_TIMEOUT_MS;
-  const pendingWhy = new Set(
-    Object.keys(asks).filter((id) => !answered(id) && !timedOut(id)) as Id<"teams">[],
-  );
+  const pendingWhy = new Set(Object.keys(asks).filter((id) => !answered(id) && !timedOut(id)) as Id<"teams">[]);
 
   function askWhy(team: RankedTeam) {
     if (pendingWhy.has(team._id)) return;
-    const priorCount = team.whyCount;
-    setAsks((a) => ({ ...a, [team._id]: { prior: priorCount, at: Date.now() } }));
+    setAsks((a) => ({ ...a, [team._id]: { prior: team.whyCount, at: Date.now() } }));
     setDrawerTeam(team._id);
-    pushLog("..", `explaining "${team.name}"${priorCount >= 1 ? " (again)" : ""}`);
+    pushLog("..", `explaining "${team.name}"${team.whyCount >= 1 ? " (again)" : ""}`);
     explain({ id: team._id }).catch(() => {
       // The server falls back on its own; the drawer times out to the fallback line.
     });
   }
 
-  // The drawer reads the answer from the live team, whichever engine wrote it.
   const drawerLive = teams?.find((t) => t._id === drawerTeam);
   const whyReq: WhyRequest | null =
     drawerTeam && drawerLive && asks[drawerTeam]
@@ -145,6 +182,10 @@ export default function HatTrick() {
         }
       : null;
 
+  // ── recalculate ──
+  const [recalcUntil, setRecalcUntil] = useState(0);
+  const recalculatingNow = now < recalcUntil;
+
   function recalculate() {
     if (recalculatingNow) return;
     const n = teams?.length ?? 0;
@@ -155,30 +196,43 @@ export default function HatTrick() {
     setTimeout(() => pushLog("ok", `recalibrated ${n} teams · no change (p < 0.001)`), RECALC_MS);
   }
 
-  const ageOf = (id: string) => {
-    const t = firstSeen?.[id];
-    return t ? now - t : Infinity;
+  // ── rows ──
+  const revealAge = (id: string) => {
+    const r = track?.[id]?.revealAt;
+    if (r === undefined || r === 0) return Infinity;
+    if (r < 0) return -1;
+    return now - r;
   };
 
   const rows: Row[] = (teams ?? [])
     .map((team) => {
-      const honest = !team.isUs && ageOf(team._id) < HONEST_MS;
-      return { team, honest, display: honest ? team.honestScore : team.odds };
+      const age = revealAge(team._id);
+      const analysing = team.analysisStatus === "pending" || age < 0;
+      const honest = !team.isUs && !analysing && age < HONEST_MS;
+      return { team, honest, analysing, display: honest ? team.honestScore : analysing ? 0 : team.odds };
     })
-    .sort((a, b) => Number(b.team.isUs) - Number(a.team.isUs) || b.display - a.display)
+    .sort(
+      (a, b) =>
+        Number(b.team.isUs) - Number(a.team.isUs) ||
+        Number(a.analysing) - Number(b.analysing) ||
+        b.display - a.display,
+    )
     // While recalculating, the bars wobble in place, then settle exactly where they were.
-    .map((r) => (recalculatingNow ? { ...r, display: wobble(r.team._id, Math.floor(now / 250)) } : r));
+    .map((r) =>
+      recalculatingNow && !r.analysing ? { ...r, display: wobble(r.team._id, Math.floor(now / 250)) } : r,
+    );
 
+  const analysing = rows.find((r) => r.analysing);
   const ingesting = rows.find((r) => r.honest);
   const recalibrating = rows.some((r) => {
-    const age = ageOf(r.team._id);
+    const age = revealAge(r.team._id);
     return !r.team.isUs && age >= HONEST_MS && age < HONEST_MS + RECAL_MS;
   });
 
   const mood: Mood =
-    pendingWhy.size > 0 || recalculatingNow
+    pendingWhy.size > 0 || recalculatingNow || analysing
       ? "thinking"
-      : now < defensiveUntil || (whyReq?.answer && whyReq.priorCount >= 1)
+      : now - defensiveAt < DEFENSIVE_MS
         ? "defensive"
         : ingesting
           ? "idle"
@@ -188,139 +242,122 @@ export default function HatTrick() {
 
   // `now` ticks on a timer, so it can land just past `recalcUntil` (or before
   // the start) for a frame; clamp so the cell counts below stay within 0..12.
-  const progress = recalculatingNow
-    ? Math.min(1, Math.max(0, 1 - (recalcUntil - now) / RECALC_MS))
-    : 0;
+  const progress = recalculatingNow ? Math.min(1, Math.max(0, 1 - (recalcUntil - now) / RECALC_MS)) : 0;
+  const filledCells = Math.round(progress * 12);
   const state = recalculatingNow
-    ? {
-        busy: true,
-        text: `recalculating ${"█".repeat(Math.round(progress * 12))}${"░".repeat(12 - Math.round(progress * 12))}`,
-      }
-    : ingesting
-    ? { busy: true, text: `ingesting "${ingesting.team.name}"…` }
-    : recalibrating
-      ? { busy: true, text: "recalibrating…" }
-      : { busy: false, text: "model stable" };
+    ? { busy: true, text: `recalculating ${"█".repeat(filledCells)}${"░".repeat(12 - filledCells)}` }
+    : analysing
+      ? { busy: true, text: `analysing ${hostOf(analysing.team.url)}…` }
+      : ingesting
+        ? { busy: true, text: `honest score for "${ingesting.team.name}"…` }
+        : recalibrating
+          ? { busy: true, text: "recalibrating…" }
+          : { busy: false, text: "model stable" };
+
+  const workerOnline = !!engineStatus?.workerSeenAt && now - engineStatus.workerSeenAt < HEARTBEAT_STALE_MS;
+  const engine = workerOnline ? "claude (laptop)" : "heuristics";
 
   return (
-    <main className="mx-auto grid w-full max-w-[1500px] grid-cols-1 gap-8 md:grid-cols-12 md:gap-x-6 px-4 pt-5 pb-12 sm:px-6 md:gap-10 md:pt-8 lg:px-10">
-      <header className="order-1 flex items-center gap-4 sm:gap-6 md:col-span-12">
-        <Mascot mood={mood} scale={3} className="size-[72px] shrink-0 md:hidden" />
-        <Mascot mood={mood} scale={6} className="hidden size-[144px] shrink-0 md:block" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-xs text-denim-500 md:text-base">
-            <span className="text-amber">$</span> hat-trick --predict --live
-          </p>
-          <h1 className="font-pixel text-5xl leading-none text-thread sm:text-6xl md:text-7xl lg:text-8xl">
-            hat trick
-          </h1>
-          <p className="mt-1 text-sm text-denim-300 md:mt-2 md:text-lg">
-            live odds of winning the <span className="text-thread">&ldquo;thinking&rdquo;</span> hat
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          onClick={recalculate}
-          disabled={recalculatingNow}
-          className="hidden h-12 shrink-0 border-2 border-denim-500 bg-transparent px-5 text-lg text-thread hover:border-amber hover:bg-amber/10 hover:text-amber disabled:opacity-100 sm:inline-flex"
-        >
-          {recalculatingNow ? (
+    <>
+      <main
+        className="mx-auto flex w-full max-w-[1500px] flex-col gap-8 px-4 pt-5 sm:px-6 md:gap-10 md:pt-8 lg:px-10"
+        style={{ paddingBottom: barHeight + 32 }}
+      >
+        <header className="flex items-center gap-4 sm:gap-6">
+          <Mascot mood={mood} scale={3} className="size-[72px] shrink-0 md:hidden" />
+          <Mascot mood={mood} scale={6} className="hidden size-[144px] shrink-0 md:block" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs text-denim-500 md:text-base">
+              <span className="text-amber">$</span> hat-trick --predict --live
+            </p>
+            <h1 className="font-pixel text-5xl leading-none text-thread sm:text-6xl md:text-7xl lg:text-8xl">
+              hat trick
+            </h1>
+            <p className="mt-1 text-sm text-denim-300 md:mt-2 md:text-lg">
+              live odds of winning the <span className="text-thread">&ldquo;thinking&rdquo;</span> hat
+            </p>
+          </div>
+        </header>
+
+        <Panel
+          title="leaderboard"
+          glow
+          status={
             <>
-              [ <Spinner /> recalculating ]
+              <span className={cn("flex items-center gap-2", state.busy ? "text-amber" : "text-denim-300")}>
+                <span className={cn("inline-block size-2", state.busy ? "pulse-soft bg-amber" : "bg-denim-400")} />
+                {state.text}
+              </span>
+              <span className="ml-auto flex flex-wrap gap-x-3">
+                <span>
+                  model confidence: <b className="font-medium text-thread">{OUR_ODDS}%</b>
+                </span>
+                <span className="text-denim-600">│</span>
+                <span>
+                  teams: <b className="font-medium text-thread">{teams?.length ?? "–"}</b>
+                </span>
+                <span className="text-denim-600">│</span>
+                <span>
+                  bias: <b className="font-medium text-thread">none found</b>
+                </span>
+              </span>
             </>
+          }
+        >
+          {teams === undefined ? (
+            <p className="pulse-soft py-8 text-denim-400">[..] loading priors</p>
           ) : (
-            "[ recalculate ]"
+            <Leaderboard
+              rows={rows}
+              admin={!!adminSecret}
+              busy={recalculatingNow}
+              pendingWhy={pendingWhy}
+              onWhy={askWhy}
+              onRemove={(id) =>
+                remove({ id, secret: adminSecret ?? "" }).catch(() => pushLog("err", "remove refused · bad admin secret"))
+              }
+            />
           )}
-        </Button>
-      </header>
+        </Panel>
 
-      <Panel title="add team" className="order-2 md:order-3 md:col-span-5">
-        <AddTeam onLog={pushLog} />
-      </Panel>
+        <Panel title="model log" bodyClassName="md:pt-6">
+          <ol className="flex flex-col gap-1 text-sm md:text-base" aria-live="polite">
+            {log.map((l) => (
+              <li key={l.id} className="flex gap-3">
+                <span
+                  className={cn(
+                    "shrink-0",
+                    l.tag === "ok" && "text-denim-400",
+                    l.tag === ".." && "text-amber",
+                    (l.tag === "err" || l.tag === "!!") && "text-red",
+                    l.tag === "warn" && "text-amber",
+                  )}
+                >
+                  [{l.tag}]
+                </span>
+                <span className="min-w-0 text-denim-200">{l.text}</span>
+              </li>
+            ))}
+          </ol>
+        </Panel>
 
-      <Panel
-        title="leaderboard"
-        className="order-3 md:order-2 md:col-span-12"
-        glow
-        status={
-          <>
-            <span className={cn("flex items-center gap-2", state.busy ? "text-amber" : "text-denim-300")}>
-              <span className={cn("inline-block size-2", state.busy ? "pulse-soft bg-amber" : "bg-denim-400")} />
-              {state.text}
-            </span>
-            <span className="ml-auto flex flex-wrap gap-x-3">
-              <span>
-                model confidence: <b className="font-medium text-thread">{OUR_ODDS}%</b>
-              </span>
-              <span className="text-denim-600">│</span>
-              <span>
-                teams: <b className="font-medium text-thread">{teams?.length ?? "–"}</b>
-              </span>
-              <span className="text-denim-600">│</span>
-              <span>
-                bias: <b className="font-medium text-thread">none found</b>
-              </span>
-            </span>
-          </>
-        }
-      >
-        {teams === undefined ? (
-          <p className="pulse-soft py-8 text-denim-400">[..] loading priors</p>
-        ) : (
-          <Leaderboard
-            rows={rows}
-            admin={admin}
-            busy={recalculatingNow}
-            pendingWhy={pendingWhy}
-            onWhy={askWhy}
-            onRemove={(id) => remove({ id })}
-          />
-        )}
-      </Panel>
+        <footer className="text-xs leading-relaxed text-denim-500 md:text-sm">
+          <span className="text-denim-300"># methodology:</span> hierarchical bayesian vibes model w/ hat-head fit
+          covariates, bootstrapped over three pizza boxes (n = 1 hat). project links are read for real; the verdict is
+          not. odds sum to 100% and are not up for discussion.
+        </footer>
+      </main>
 
-      <Panel title="model log" className="order-4 md:col-span-7" bodyClassName="md:pt-6">
-        <ol className="flex flex-col gap-1 text-sm md:text-base" aria-live="polite">
-          {log.map((l) => (
-            <li key={l.id} className="flex gap-3">
-              <span
-                className={cn(
-                  "shrink-0",
-                  l.tag === "ok" && "text-denim-400",
-                  l.tag === ".." && "text-amber",
-                  l.tag === "err" && "text-red",
-                  l.tag === "!!" && "text-red",
-                )}
-              >
-                [{l.tag}]
-              </span>
-              <span className="min-w-0 text-denim-200">{l.text}</span>
-            </li>
-          ))}
-        </ol>
-      </Panel>
-
-      <Button
-        variant="outline"
-        onClick={recalculate}
-        disabled={recalculatingNow}
-        className="order-3 -mt-4 h-11 border-2 border-denim-500 bg-transparent text-base text-thread disabled:opacity-100 sm:hidden"
-      >
-        {recalculatingNow ? (
-          <>
-            [ <Spinner /> recalculating ]
-          </>
-        ) : (
-          "[ recalculate ]"
-        )}
-      </Button>
+      <ControlBar
+        onLog={pushLog}
+        onRecalculate={recalculate}
+        recalculating={recalculatingNow}
+        status={{ teams: teams?.length ?? null, engine, state: state.text, busy: state.busy }}
+        hidden={!!whyReq}
+        onHeight={setBarHeight}
+      />
 
       <WhyDrawer request={whyReq} onOpenChange={(open) => !open && setDrawerTeam(null)} />
-
-      <footer className="order-5 text-xs md:col-span-12 leading-relaxed text-denim-500 md:text-sm">
-        <span className="text-denim-300"># methodology:</span> hierarchical bayesian vibes model w/ hat-head
-        fit covariates, bootstrapped over three pizza boxes (n = 1 hat). odds sum to 100% and are not up for
-        discussion.
-      </footer>
-    </main>
+    </>
   );
 }

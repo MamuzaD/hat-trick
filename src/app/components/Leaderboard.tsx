@@ -13,6 +13,8 @@ export type Row = {
   /** What the bar shows right now: honestScore during the honest phase, rigged odds after. */
   display: number;
   honest: boolean;
+  /** Link still being fetched/analysed: no score to show yet. */
+  analysing: boolean;
 };
 
 const CELL = 12; // keep in sync with .cells --cell in globals.css
@@ -99,16 +101,19 @@ function TeamRow({
   onWhy?: (team: RankedTeam) => void;
   onRemove?: (id: Id<"teams">) => void;
 }) {
-  const { team, display, honest } = row;
+  const { team, display, honest, analysing } = row;
+  const host = team.url ? new URL(team.url).hostname.replace(/^www\./, "") : null;
+  const linkLabel = team.url ? `${host}${new URL(team.url).pathname.replace(/\/$/, "")}` : null;
   const negative = display < 0;
   const [trackRef, trackWidth] = useWidth<HTMLDivElement>();
   // Only type out justifications that arrive after this row mounted.
   const [initialWhy] = useState(team.why);
+  const [initialSummary] = useState(team.summary);
 
   // Snap the fill to whole cells.
   const cells = Math.max(1, Math.floor(trackWidth / CELL));
   const clamped = Math.max(0, Math.min(100, display));
-  const filled = clamped > 0 ? Math.max(1, Math.round((cells * clamped) / 100)) : 0;
+  const filled = analysing ? 0 : clamped > 0 ? Math.min(cells, Math.max(1, Math.round((cells * clamped) / 100))) : 0;
   const fillPx = filled * CELL;
 
   const accent = team.isUs ? "text-amber" : negative ? "text-red" : honest ? "text-thread" : "text-denim-300";
@@ -144,10 +149,11 @@ function TeamRow({
         >
           {team.name}
         </div>
-        {(team.isUs || honest) && (
+        {(team.isUs || honest || analysing) && (
           <div className="mt-1 text-[0.7rem] uppercase tracking-[0.18em] md:text-xs">
             {team.isUs && <span className="text-amber">★ model favourite</span>}
-            {honest && <span className="pulse-soft text-thread">● preliminary · unadjusted</span>}
+            {analysing && <span className="pulse-soft text-amber">● analysing {host}…</span>}
+            {honest && !analysing && <span className="pulse-soft text-thread">● honest score · unadjusted</span>}
           </div>
         )}
       </div>
@@ -155,7 +161,7 @@ function TeamRow({
       <div style={{ gridArea: "bar" }} className="relative">
         <div
           ref={trackRef}
-          className={cn("cells relative h-7 w-full sm:h-8 md:h-10 lg:h-12", busy && "pulse-soft")}
+          className={cn("cells relative h-7 w-full sm:h-8 md:h-10 lg:h-12", (busy || analysing) && "pulse-soft")}
         >
           <div className="absolute inset-0 bg-denim-800/80" />
           <motion.div
@@ -177,7 +183,7 @@ function TeamRow({
           negative ? "text-red" : team.isUs ? "text-amber" : honest ? "text-thread" : "text-denim-200",
         )}
       >
-        {formatOdds(display)}
+        {analysing ? "··.·" : formatOdds(display)}
         <span className="text-[0.5em] text-denim-500">%</span>
       </span>
 
@@ -194,8 +200,21 @@ function TeamRow({
         <span>
           pizza <b className="font-medium text-denim-200">{team.pizzaSlices}</b> sl.
         </span>
+        {linkLabel && (
+          <a
+            href={team.url}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            className="max-w-[28ch] truncate text-denim-400 underline decoration-denim-600 underline-offset-4 hover:text-thread"
+          >
+            @{linkLabel}
+          </a>
+        )}
+        {team.engine && !team.isUs && !analysing && (
+          <span className="text-denim-500">engine: {team.engine}</span>
+        )}
         <span className="flex gap-2 sm:ml-auto">
-          {onWhy && (
+          {onWhy && !analysing && (
             <Button
               variant="outline"
               size="sm"
@@ -219,11 +238,24 @@ function TeamRow({
         </span>
       </div>
 
-      {team.why && (
-        <p style={{ gridArea: "why" }} className="max-w-4xl text-sm leading-relaxed text-denim-300 md:text-base">
-          <span className="text-denim-500">↳ model: </span>
-          <Typewriter key={team.why} text={team.why} animate={team.why !== initialWhy} />
-        </p>
+      {(team.summary || team.why || team.analysisNote) && (
+        <div style={{ gridArea: "why" }} className="flex max-w-5xl flex-col gap-1 text-sm leading-relaxed md:text-base">
+          {team.summary && (
+            <p className="text-denim-200">
+              <span className="text-denim-500">↳ read: </span>
+              <Typewriter key={team.summary} text={team.summary} animate={team.summary !== initialSummary} />
+            </p>
+          )}
+          {team.analysisStatus === "failed" && team.analysisNote && (
+            <p className="text-denim-500">↳ {team.analysisNote}</p>
+          )}
+          {team.why && (
+            <p className="text-denim-300">
+              <span className="text-denim-500">↳ model: </span>
+              <Typewriter key={team.why} text={team.why} animate={team.why !== initialWhy} />
+            </p>
+          )}
+        </div>
       )}
     </motion.li>
   );

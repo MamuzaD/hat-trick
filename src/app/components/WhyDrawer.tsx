@@ -65,6 +65,7 @@ export default function WhyDrawer({
                 <>
                   <p className={cn(defensive ? "text-red" : "text-denim-400")}>
                     {defensive ? "[!!] ranking questioned again. model is offended." : "[ok] justification computed"}
+                    {request.team.whyEngine && <span className="text-denim-500"> · engine: {request.team.whyEngine}</span>}
                   </p>
                   <p className="text-base text-thread md:text-lg">
                     <Typewriter key={request.answer} text={request.answer} />
