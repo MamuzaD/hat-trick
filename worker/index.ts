@@ -49,7 +49,8 @@ const log = (...a: unknown[]) => console.log(new Date().toISOString().slice(11, 
 
 /** Only what the CLI needs to find itself and its login. Nothing secret. */
 function childEnv(): NodeJS.ProcessEnv {
-  const keep = ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "TMPDIR", "TERM"];
+  // CLAUDE_CONFIG_DIR picks which Claude Code login the CLI uses (it holds no secret itself).
+  const keep = ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "TMPDIR", "TERM", "CLAUDE_CONFIG_DIR"];
   const env: Record<string, string> = {};
   for (const k of keep) {
     const val = process.env[k];

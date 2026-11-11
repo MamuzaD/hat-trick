@@ -86,4 +86,26 @@ export default defineSchema({
     text: v.string(),
     kind: v.optional(v.union(v.literal("user"), v.literal("hat"))),
   }).index("by_trader", ["traderId"]),
+
+  /** Open tabs: one row per browser, refreshed by a heartbeat. */
+  presence: defineTable({
+    traderId: v.string(),
+    at: v.number(),
+  }).index("by_trader", ["traderId"]),
+
+  /** Hat coins per browser trader. No row means the starting 100. */
+  wallets: defineTable({
+    traderId: v.string(),
+    coins: v.number(),
+  }).index("by_trader", ["traderId"]),
+
+  /** Every bet is settled early, in place. teamId may point at a removed team. */
+  bets: defineTable({
+    traderId: v.string(),
+    teamId: v.id("teams"),
+    amount: v.number(),
+    outcome: v.union(v.literal("won"), v.literal("lost")),
+    payout: v.number(),
+    note: v.string(),
+  }).index("by_trader", ["traderId"]),
 });

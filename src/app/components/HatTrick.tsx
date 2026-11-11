@@ -6,14 +6,18 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { RankedTeam } from "@/convex/teams";
 import { FALLBACK_WHY, OUR_ODDS } from "@/convex/config";
+import { ONLINE_WINDOW_MS, PING_MS } from "@/convex/presence";
 import { cn } from "@/lib/utils";
+import { useTrader } from "@/lib/useTrader";
 import ChatSidebar from "./ChatSidebar";
 import ControlBar from "./ControlBar";
-import IntroModal from "./IntroModal";
+import HatSpin from "./HatSpin";
+import IntroModal, { INTRO_OPEN_EVENT } from "./IntroModal";
 import Leaderboard, { formatOdds, type Row } from "./Leaderboard";
 import Mascot, { type Mood } from "./Mascot";
 import Panel from "./Panel";
 import WhyDrawer, { type WhyRequest } from "./WhyDrawer";
+import Wallet from "./Wallet";
 
 /** A team shows its honest score for this long before the model "recalibrates". */
 const HONEST_MS = 2000;
@@ -219,9 +223,28 @@ export default function HatTrick() {
   }, [seed]);
 
   const now = useNow(200);
+
+  // ── presence: how many browsers have the market open right now ──
+  const trader = useTrader();
+  const ping = useMutation(api.presence.ping);
+  const seen = useQuery(api.presence.seen);
+  useEffect(() => {
+    const beat = () => {
+      if (document.visibilityState === "visible") ping({ traderId: trader.id }).catch(() => {});
+    };
+    beat();
+    const id = setInterval(beat, PING_MS);
+    document.addEventListener("visibilitychange", beat);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", beat);
+    };
+  }, [ping, trader.id]);
+  const online = seen ? Math.max(1, seen.filter((at) => now - at < ONLINE_WINDOW_MS).length) : null;
   const [log, pushLog] = useLog();
   const { track, defensiveAt } = useTracker(teams, pushLog);
   const [barHeight, setBarHeight] = useState(140);
+  const [spinOpen, setSpinOpen] = useState(false);
 
   // ── why? ──
   /** Questions this client asked: answered once the live team's whyCount passes `prior`. */
@@ -342,7 +365,13 @@ export default function HatTrick() {
         style={{ paddingBottom: barHeight + 32 }}
       >
         <header className="rise flex items-center gap-4 sm:gap-6 md:gap-8">
-          <div className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => setSpinOpen(true)}
+            aria-label="see the hat"
+            title="see the hat"
+            className="relative shrink-0 cursor-pointer transition-transform hover:scale-105 active:scale-95"
+          >
             <div className="bob md:hidden" style={{ "--px": "3px" } as React.CSSProperties}>
               <Mascot mood={mood} scale={3} className="size-[72px]" />
             </div>
@@ -351,16 +380,31 @@ export default function HatTrick() {
             </div>
             <span aria-hidden className="sparkle -top-1 right-0" />
             <span aria-hidden className="sparkle bottom-2 -left-2 hidden md:block" style={{ animationDelay: "1.3s" }} />
-          </div>
+          </button>
           <div className="min-w-0 flex-1">
-            <p className="flex items-center gap-3 truncate text-xs text-denim-500 md:text-base">
+            <p className="flex items-center gap-3 truncate pr-[5.5rem] text-xs text-denim-500 md:text-base lg:pr-0">
               <span className="flex shrink-0 items-center gap-2 border border-amber/50 bg-amber/10 px-1.5 py-0.5 text-[0.7em] tracking-[0.2em] text-amber uppercase">
                 <span className="live-dot inline-block size-1.5 bg-amber" />
                 live
               </span>
-              <span className="truncate">
+              {online !== null && (
+                <span className="shrink-0 text-denim-300" title="browsers with the market open right now">
+                  <b className="font-medium text-thread">{online}</b> online
+                </span>
+              )}
+              <span className="hidden truncate sm:inline">
                 <span className="text-amber">$</span> hat-trick --predict --live
               </span>
+              <Wallet />
+              <button
+                type="button"
+                aria-label="what is this?"
+                title="what is this?"
+                onClick={() => window.dispatchEvent(new Event(INTRO_OPEN_EVENT))}
+                className="shrink-0 border border-denim-600 px-1.5 py-0.5 text-[0.85em] leading-none text-denim-300 transition-colors hover:border-amber hover:text-amber"
+              >
+                ?
+              </button>
             </p>
             <h1 className="title-shadow mt-1 font-pixel text-6xl leading-[0.9] text-thread sm:text-7xl md:text-8xl lg:text-9xl">
               hat trick
@@ -465,6 +509,7 @@ export default function HatTrick() {
       <ChatSidebar />
 
       <IntroModal />
+      <HatSpin open={spinOpen} onOpenChange={setSpinOpen} />
     </>
   );
 }

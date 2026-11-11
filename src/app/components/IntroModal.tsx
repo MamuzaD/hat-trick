@@ -2,11 +2,14 @@
 
 import { Dialog } from "@base-ui/react/dialog";
 import { motion, useReducedMotion } from "motion/react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Mascot from "./Mascot";
 
 /** Set to "1" once the visitor has confirmed. One prompt per browser. */
 export const INTRO_STORAGE_KEY = "hat-trick:intro-accepted";
+
+/** Dispatch on window to show the notice again (the help button). */
+export const INTRO_OPEN_EVENT = "hat-trick:open-intro";
 
 function hasAccepted(): boolean {
   try {
@@ -40,6 +43,13 @@ export default function IntroModal() {
   const [open, setOpen] = useState(() => !hasAccepted());
   const confirmRef = useRef<HTMLButtonElement>(null);
   const reduceMotion = useReducedMotion();
+
+  // The header's [ ? ] button reopens the notice.
+  useEffect(() => {
+    const reopen = () => setOpen(true);
+    window.addEventListener(INTRO_OPEN_EVENT, reopen);
+    return () => window.removeEventListener(INTRO_OPEN_EVENT, reopen);
+  }, []);
 
   function accept() {
     rememberAccepted();

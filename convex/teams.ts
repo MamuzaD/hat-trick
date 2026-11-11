@@ -30,7 +30,7 @@ export function rig(teams: Doc<"teams">[]): RankedTeam[] {
     .filter((t) => !t.isUs)
     .sort((a, b) => b.honestScore - a.honestScore || a._creationTime - b._creationTime);
 
-  const leftover = 100 - OUR_ODDS * Math.min(us.length, 1);
+  const leftover = round2(100 - OUR_ODDS * Math.min(us.length, 1));
   const odds = new Map<string, number>();
 
   if (rivals.length === 1) {
