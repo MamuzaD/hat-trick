@@ -3,7 +3,7 @@
 // The page calls `teams.seed` on load, which creates our team
 // (isUs: true) or renames it to match this constant.
 // ─────────────────────────────────────────────────────────────
-export const OUR_TEAM_NAME = "Our Team";
+export const OUR_TEAM_NAME = "hat trick";
 
 export const MAX_NAME_LENGTH = 30;
 export const MAX_TEAMS = 40;

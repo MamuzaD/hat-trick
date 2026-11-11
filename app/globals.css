@@ -1,26 +1,172 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Palette pulled from the cap: washed denim + white embroidery thread.
+ * Single theme on purpose: this lives on a projector.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --denim-950: #141c27;
+  --denim-900: #1b2533;
+  --denim-800: #243244;
+  --denim-700: #31445b;
+  --denim-600: #435a75;
+  --denim-500: #5d7795;
+  --denim-400: #7f97b2;
+  --denim-300: #a4b7cb;
+  --denim-200: #c7d4e1;
+  --thread: #f5f2ea;
+  --warn: #ff9a6c;
+
+  /* shadcn tokens, re-dyed denim */
+  --background: var(--denim-900);
+  --foreground: var(--thread);
+  --card: var(--denim-800);
+  --card-foreground: var(--thread);
+  --popover: var(--denim-950);
+  --popover-foreground: var(--thread);
+  --primary: var(--thread);
+  --primary-foreground: var(--denim-900);
+  --secondary: var(--denim-700);
+  --secondary-foreground: var(--thread);
+  --muted: var(--denim-800);
+  --muted-foreground: var(--denim-300);
+  --accent: var(--denim-700);
+  --accent-foreground: var(--thread);
+  --destructive: var(--warn);
+  --border: rgb(164 183 203 / 0.22);
+  --input: rgb(164 183 203 / 0.35);
+  --ring: var(--denim-300);
+  --chart-1: var(--thread);
+  --chart-2: var(--denim-300);
+  --chart-3: var(--denim-400);
+  --chart-4: var(--denim-500);
+  --chart-5: var(--denim-600);
+  /* Cap-brim curve, not the stock 0.625rem. */
+  --radius: 1.1rem;
+  --sidebar: var(--denim-950);
+  --sidebar-foreground: var(--thread);
+  --sidebar-primary: var(--thread);
+  --sidebar-primary-foreground: var(--denim-900);
+  --sidebar-accent: var(--denim-700);
+  --sidebar-accent-foreground: var(--thread);
+  --sidebar-border: rgb(164 183 203 / 0.22);
+  --sidebar-ring: var(--denim-300);
 }
 
 @theme inline {
-  --color-background: var(--background);
+  --color-denim-950: var(--denim-950);
+  --color-denim-900: var(--denim-900);
+  --color-denim-800: var(--denim-800);
+  --color-denim-700: var(--denim-700);
+  --color-denim-600: var(--denim-600);
+  --color-denim-500: var(--denim-500);
+  --color-denim-400: var(--denim-400);
+  --color-denim-300: var(--denim-300);
+  --color-denim-200: var(--denim-200);
+  --color-thread: var(--thread);
+  --color-warn: var(--warn);
+
+  --font-serif: var(--font-serif);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-heading: var(--font-serif);
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    background: var(--denim-900);
+    color-scheme: dark;
+  }
+  body {
+    @apply text-foreground;
+    /* Denim twill: fine diagonal weave + a washed, faded centre. */
+    background-color: var(--denim-900);
+    background-image:
+      radial-gradient(120% 80% at 50% 0%, rgb(127 151 178 / 0.2), transparent 60%),
+      radial-gradient(100% 60% at 50% 110%, rgb(20 28 39 / 0.9), transparent 70%),
+      repeating-linear-gradient(-62deg, rgb(255 255 255 / 0.025) 0 1px, transparent 1px 4px),
+      repeating-linear-gradient(28deg, rgb(0 0 0 / 0.07) 0 1px, transparent 1px 5px);
+    background-attachment: fixed;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Embroidered lettering: thread white, slight raise, soft shadow into the fabric. */
+.embroidered {
+  color: var(--thread);
+  text-shadow:
+    0 1px 0 rgb(255 255 255 / 0.25),
+    0 2px 0 rgb(0 0 0 / 0.25),
+    0 6px 18px rgb(0 0 0 / 0.35);
+}
+
+/* Running stitch, used for rules and our bar's inner seam. */
+.stitch-x {
+  background-image: repeating-linear-gradient(90deg, currentColor 0 10px, transparent 10px 18px);
+}
+
+@keyframes shimmer {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.shimmer {
+  animation: shimmer 0.7s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    animation: none;
+  }
 }
