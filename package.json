@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "worker": "tsx worker/index.ts"
+    "worker": "tsx worker/index.ts",
+    "board:list": "node scripts/board.mjs list",
+    "board:remove": "node scripts/board.mjs remove",
+    "board:reset": "node scripts/board.mjs reset"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",

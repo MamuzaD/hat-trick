@@ -28,14 +28,12 @@ export function formatOdds(n: number) {
 
 type Props = {
   rows: Row[];
-  admin: boolean;
   busy: boolean;
   pendingWhy: Set<Id<"teams">>;
   onWhy?: (team: RankedTeam) => void;
-  onRemove?: (id: Id<"teams">) => void;
 };
 
-export default function Leaderboard({ rows, admin, busy, pendingWhy, onWhy, onRemove }: Props) {
+export default function Leaderboard({ rows, busy, pendingWhy, onWhy }: Props) {
   return (
     <div>
       <div
@@ -58,11 +56,9 @@ export default function Leaderboard({ rows, admin, busy, pendingWhy, onWhy, onRe
               key={row.team._id}
               row={row}
               rank={i + 1}
-              admin={admin}
               busy={busy}
               pending={pendingWhy.has(row.team._id)}
               onWhy={onWhy}
-              onRemove={onRemove}
             />
           ))}
         </AnimatePresence>
@@ -87,19 +83,15 @@ function useWidth<T extends HTMLElement>() {
 function TeamRow({
   row,
   rank,
-  admin,
   busy,
   pending,
   onWhy,
-  onRemove,
 }: {
   row: Row;
   rank: number;
-  admin: boolean;
   busy: boolean;
   pending: boolean;
   onWhy?: (team: RankedTeam) => void;
-  onRemove?: (id: Id<"teams">) => void;
 }) {
   const { team, display, honest, analysing } = row;
   const host = team.url ? new URL(team.url).hostname.replace(/^www\./, "") : null;
@@ -223,16 +215,6 @@ function TeamRow({
               className="h-7 border-denim-600 bg-transparent px-2 text-xs text-denim-200 hover:border-thread hover:bg-denim-800 hover:text-thread md:h-8 md:text-sm"
             >
               {pending ? "[ … ]" : team.whyCount >= 1 ? "[ why?! ]" : "[ why? ]"}
-            </Button>
-          )}
-          {admin && !team.isUs && onRemove && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onRemove(team._id)}
-              className="h-7 border-red/60 bg-transparent px-2 text-xs text-red hover:bg-red/10 md:h-8 md:text-sm"
-            >
-              [ rm ]
             </Button>
           )}
         </span>

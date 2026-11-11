@@ -1,7 +1,7 @@
 "use client";
 
 import { useAction, useMutation, useQuery } from "convex/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { RankedTeam } from "@/convex/teams";
@@ -131,15 +131,12 @@ export default function HatTrick() {
   const teams = useQuery(api.teams.list);
   const engineStatus = useQuery(api.jobs.status);
   const seed = useMutation(api.teams.seed);
-  const remove = useMutation(api.teams.remove);
   const explain = useAction(api.claude.explain);
 
   useEffect(() => {
     seed().catch(() => {});
   }, [seed]);
 
-  /** ?admin=<secret> shows delete buttons; the server checks the secret. */
-  const adminSecret = useMemo(() => new URLSearchParams(window.location.search).get("admin") || null, []);
   const now = useNow(200);
   const [log, pushLog] = useLog();
   const { track, defensiveAt } = useTracker(teams, pushLog);
@@ -309,13 +306,9 @@ export default function HatTrick() {
           ) : (
             <Leaderboard
               rows={rows}
-              admin={!!adminSecret}
               busy={recalculatingNow}
               pendingWhy={pendingWhy}
               onWhy={askWhy}
-              onRemove={(id) =>
-                remove({ id, secret: adminSecret ?? "" }).catch(() => pushLog("err", "remove refused · bad admin secret"))
-              }
             />
           )}
         </Panel>

@@ -4,6 +4,7 @@
 // (isUs: true) or renames it to match this constant.
 // ─────────────────────────────────────────────────────────────
 export const OUR_TEAM_NAME = "hat trick";
+export const OUR_TEAM_URL = "https://hat-trick-bice.vercel.app";
 
 export const MAX_NAME_LENGTH = 30;
 export const MAX_TEAMS = 40;

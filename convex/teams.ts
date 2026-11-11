@@ -6,9 +6,10 @@ import {
   internalQuery,
   mutation,
   query,
+  type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import { MAX_NAME_LENGTH, MAX_TEAMS, OUR_ODDS, OUR_TEAM_NAME } from "./config";
+import { MAX_NAME_LENGTH, MAX_TEAMS, OUR_ODDS, OUR_TEAM_NAME, OUR_TEAM_URL } from "./config";
 import { engine, facts } from "./schema";
 import { randomMetrics } from "./lib/heuristics";
 import { checkUrl } from "./lib/url";
@@ -93,34 +94,37 @@ export const add = mutation({
   },
 });
 
-function requireAdmin(secret: string) {
-  const expected = process.env.ADMIN_SECRET;
-  if (!expected || expected.length < 16) throw new ConvexError("admin not configured");
-  let diff = secret.length ^ expected.length;
-  for (let i = 0; i < expected.length; i++) diff |= (secret.charCodeAt(i) || 0) ^ expected.charCodeAt(i);
-  if (diff !== 0) throw new ConvexError("unauthorised");
-}
-
-/** For cleaning up abuse from our laptop: `?admin=<ADMIN_SECRET>` in the page URL. */
-export const remove = mutation({
-  args: { id: v.id("teams"), secret: v.string() },
-  handler: async (ctx, { id, secret }) => {
-    requireAdmin(secret);
-    const team = await ctx.db.get(id);
-    if (!team || team.isUs) return;
-    await ctx.db.delete(id);
+/**
+ * Admin is CLI-only (authenticated by the Convex login), never from the page:
+ *   pnpm board:remove "<team name>"
+ */
+export const removeTeam = internalMutation({
+  args: { id: v.optional(v.id("teams")), name: v.optional(v.string()) },
+  handler: async (ctx, { id, name }) => {
+    const all = await ctx.db.query("teams").collect();
+    const team = id ? all.find((t) => t._id === id) : all.find((t) => t.name === name);
+    if (!team) return `no team ${JSON.stringify(name ?? id)}`;
+    if (team.isUs) return "refusing to remove hat trick";
+    for (const j of await ctx.db.query("jobs").collect()) if (j.teamId === team._id) await ctx.db.delete(j._id);
+    await ctx.db.delete(team._id);
+    return `removed ${JSON.stringify(team.name)}`;
   },
 });
 
-/** CLI cleanup: `npx convex run teams:reset` removes every rival and freshens our row. */
+async function wipeBoard(ctx: MutationCtx) {
+  for (const t of await ctx.db.query("teams").collect()) {
+    if (t.isUs) await ctx.db.patch(t._id, { why: undefined, whyCount: 0, whyEngine: undefined });
+    else await ctx.db.delete(t._id);
+  }
+  for (const j of await ctx.db.query("jobs").collect()) await ctx.db.delete(j._id);
+}
+
+/** Demo-day reset, CLI-only: `pnpm board:reset`. Only "hat trick" survives, why cleared, jobs cleared. */
 export const reset = internalMutation({
   args: {},
   handler: async (ctx) => {
-    for (const t of await ctx.db.query("teams").collect()) {
-      if (t.isUs) await ctx.db.patch(t._id, { why: undefined, whyCount: 0, whyEngine: undefined });
-      else await ctx.db.delete(t._id);
-    }
-    for (const j of await ctx.db.query("jobs").collect()) await ctx.db.delete(j._id);
+    await wipeBoard(ctx);
+    return "board reset: only hat trick remains";
   },
 });
 
@@ -132,6 +136,7 @@ export const seed = mutation({
     if (!us) {
       await ctx.db.insert("teams", {
         name: OUR_TEAM_NAME,
+        url: OUR_TEAM_URL,
         isUs: true,
         honestScore: 52,
         vibes: 11,
@@ -139,8 +144,8 @@ export const seed = mutation({
         pizzaSlices: 23,
         whyCount: 0,
       });
-    } else if (us.name !== OUR_TEAM_NAME) {
-      await ctx.db.patch(us._id, { name: OUR_TEAM_NAME });
+    } else if (us.name !== OUR_TEAM_NAME || us.url !== OUR_TEAM_URL) {
+      await ctx.db.patch(us._id, { name: OUR_TEAM_NAME, url: OUR_TEAM_URL });
     }
   },
 });

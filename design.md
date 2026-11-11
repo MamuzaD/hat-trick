@@ -70,7 +70,7 @@ One table, `teams`:
 
 - `teams.list` (query): all teams. Our team is first at 99.7%. The rest are sorted by `honestScore` and squeezed into what's left, with the last place allowed below zero.
 - `teams.add` (mutation): trims and caps the name, generates the metrics.
-- `teams.remove` (mutation): for cleaning up abuse from our laptop.
+- `teams.removeTeam` and `teams.reset` (internal mutations): cleanup from our laptop only, through the Convex CLI (`pnpm board:list`, `pnpm board:remove "<team name>"`, `pnpm board:reset`). The page has no admin controls.
 - `teams.explain` (action): calls Claude with the team's metrics, writes `why`, increments `whyCount`.
 
 The rigging happens in the client: a new team renders at its `honestScore` for two seconds, then switches to the value from `teams.list`. Motion animates the slide.
